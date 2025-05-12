@@ -20,5 +20,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/avigu/myfinapp.git"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
