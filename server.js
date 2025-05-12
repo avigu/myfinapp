@@ -12,6 +12,13 @@ const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gf
 app.use(express.static('public'));
 
 // --- Helper Functions (adapted from index.js) ---
+let cachedSP500Tickers = null;
+async function getSP500TickersCached() {
+  if (cachedSP500Tickers) return cachedSP500Tickers;
+  cachedSP500Tickers = await getSP500Tickers();
+  return cachedSP500Tickers;
+}
+
 async function getSP500Tickers() {
   console.log('Fetching S&P 500 tickers from Wikipedia...');
   const url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies';
@@ -49,6 +56,7 @@ async function getHistoricalPrices(ticker, from, to) {
     const fromDate = new Date(from * 1000).toISOString().slice(0, 10);
     const toDate = new Date(to * 1000).toISOString().slice(0, 10);
     const history = await yahooFinance.historical(ticker, { period1: fromDate, period2: toDate, interval: '1d' });
+   // console.log(`History for ${ticker} from ${fromDate} to ${toDate}:`, history);
     return { s: history.length > 1 ? 'ok' : 'no_data', c: history.map(day => day.close), t: history.map(day => Math.floor(new Date(day.date).getTime() / 1000)) };
   } catch (err) {
     console.log(`${ticker}: Error fetching historical prices from Yahoo: ${err.message}`);
@@ -67,13 +75,20 @@ async function getRecentEarningsCalendar(from, to) {
   }
 }
 
-// New helper to get upcoming relevant earnings
+// Cache for upcoming earnings
+let cachedUpcomingEarnings = null;
+let cachedUpcomingEarningsTime = 0;
+const UPCOMING_EARNINGS_CACHE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 async function getUpcomingRelevantEarnings() {
   const now = new Date();
+  if (cachedUpcomingEarnings && (Date.now() - cachedUpcomingEarningsTime < UPCOMING_EARNINGS_CACHE_MS)) {
+    return cachedUpcomingEarnings;
+  }
   const fromDate = now.toISOString().slice(0, 10);
   const toDate = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const earningsCalendarData = await getRecentEarningsCalendar(fromDate, toDate);
-  const sp500Tickers = await getSP500Tickers();
+  const sp500Tickers = await getSP500TickersCached();
   const sp500Set = new Set(sp500Tickers);
   const earningsArray = earningsCalendarData.earningsCalendar || [];
   const relevant = [];
@@ -90,7 +105,9 @@ async function getUpcomingRelevantEarnings() {
     } catch {}
   }
   // Sort by date ascending
-  return relevant.sort((a, b) => new Date(a.date) - new Date(b.date));
+  cachedUpcomingEarnings = relevant.sort((a, b) => new Date(a.date) - new Date(b.date));
+  cachedUpcomingEarningsTime = Date.now();
+  return cachedUpcomingEarnings;
 }
 
 // --- Main Logic Function ---
@@ -98,12 +115,12 @@ async function getSP500InvestmentOpportunities(now = new Date()) {
   const fromDate = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const toDate = now.toISOString().slice(0, 10);
   const earningsCalendarData = await getRecentEarningsCalendar(fromDate, toDate);
-  
-  const sp500Tickers = await getSP500Tickers();
+  const sp500Tickers = await getSP500TickersCached();
   const sp500Set = new Set(sp500Tickers);
 
   const earningsArray = earningsCalendarData.earningsCalendar || [];
   const sp500Earnings = earningsArray.filter(e => e && e.symbol && sp500Set.has(e.symbol));
+  console.log('S&P 500 tickers with earning events:', sp500Earnings.map(e => e.symbol));
 
   const results = [];
   const nowUnix = Math.floor(now.getTime() / 1000);
@@ -118,20 +135,30 @@ async function getSP500InvestmentOpportunities(now = new Date()) {
       const marketCap = await getMarketCap(ticker);
       if (!marketCap || marketCap < 5_000_000_000) continue;
 
-      const fromUnixForHistory = earningsUnix - 86400; // one day before
-      const history = await getHistoricalPrices(ticker, fromUnixForHistory, nowUnix);
-      if (!history || history.s !== 'ok' || !history.c || history.c.length < 2) continue;
-
-      const priceBeforeEarnings = history.c[0];
-      const priceToday = history.c[history.c.length - 1];
-      const change = ((priceToday - priceBeforeEarnings) / priceBeforeEarnings) * 100;
+      // Fetch up to a week before earnings to ensure we get the last trading day
+      const daysBack = 7;
+      const fromUnixForHistory = earningsUnix - daysBack * 86400;
+      const toUnixForHistory = earningsUnix;
+      const history = await getHistoricalPrices(ticker, fromUnixForHistory, toUnixForHistory);
+      if (!history || !history.c || history.c.length < 1) {
+        continue;
+      }
+      // Use the last available close before the earnings date
+      const priceBeforeEarnings = history.c[history.c.length - 1];
+      // Get live price
+      const liveQuote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] });
+      const priceNow = liveQuote.price.regularMarketPrice;
+      if (!priceNow) {
+        continue;
+      }
+      const change = ((priceNow - priceBeforeEarnings) / priceBeforeEarnings) * 100;
       
       results.push({
         ticker,
         earningsDate: earning.date,
         marketCap,
         priceBeforeEarnings,
-        priceToday,
+        priceNow,
         change
       });
     } catch (err) {
@@ -213,13 +240,13 @@ app.get('/', async (req, res) => {
 
           <h2>Top 5 Positive Changes (Day Before Earnings to Today)</h2><ul>`;
     topGainers.forEach(stock => {
-      html += `<li>${stock.ticker}: <span class="gainer">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceToday.toFixed(2)})</li>`;
+      html += `<li>${stock.ticker}: <span class="gainer">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceNow.toFixed(2)})</li>`;
     });
     html += '</ul>';
 
     html += '<h2>Top 5 Drops (Day Before Earnings to Today)</h2><ul>';
     topLosers.forEach(stock => {
-      html += `<li>${stock.ticker}: <span class="loser">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceToday.toFixed(2)})</li>`;
+      html += `<li>${stock.ticker}: <span class="loser">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceNow.toFixed(2)})</li>`;
     });
 
     // Add summary section
