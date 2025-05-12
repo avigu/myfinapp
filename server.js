@@ -13,10 +13,13 @@ app.use(express.static('public'));
 
 // --- Helper Functions (adapted from index.js) ---
 let cachedSP500Tickers = null;
+let cachedSP500NameMap = null;
 async function getSP500TickersCached() {
-  if (cachedSP500Tickers) return cachedSP500Tickers;
-  cachedSP500Tickers = await getSP500Tickers();
-  return cachedSP500Tickers;
+  if (cachedSP500Tickers && cachedSP500NameMap) return [cachedSP500Tickers, cachedSP500NameMap];
+  const { tickers, nameMap } = await getSP500Tickers();
+  cachedSP500Tickers = tickers;
+  cachedSP500NameMap = nameMap;
+  return [cachedSP500Tickers, cachedSP500NameMap];
 }
 
 async function getSP500Tickers() {
@@ -25,20 +28,25 @@ async function getSP500Tickers() {
   const response = await axios.get(url);
   const $ = cheerio.load(response.data);
   const tickers = [];
+  const nameMap = {};
   $('table.wikitable tbody tr').each((i, elem) => {
     const symbol = $(elem).find('td').first().text().trim();
+    const name = $(elem).find('td').eq(1).text().trim();
     if (symbol && symbol !== 'Symbol' && /^[A-Z.-]{1,6}$/.test(symbol) && !symbol.includes(' ')) {
-      tickers.push(symbol.replace('.', '-'));
+      const ticker = symbol.replace('.', '-');
+      tickers.push(ticker);
+      nameMap[ticker] = name;
     }
   });
   if (!tickers.includes('PINS')) {
     tickers.unshift('PINS');
+    nameMap['PINS'] = 'Pinterest';
   }
   for (let i = tickers.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [tickers[i], tickers[j]] = [tickers[j], tickers[i]];
   }
-  return tickers;
+  return { tickers, nameMap };
 }
 
 async function getMarketCap(ticker) {
@@ -88,7 +96,7 @@ async function getUpcomingRelevantEarnings() {
   const fromDate = now.toISOString().slice(0, 10);
   const toDate = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const earningsCalendarData = await getRecentEarningsCalendar(fromDate, toDate);
-  const sp500Tickers = await getSP500TickersCached();
+  const [sp500Tickers, sp500NameMap] = await getSP500TickersCached();
   const sp500Set = new Set(sp500Tickers);
   const earningsArray = earningsCalendarData.earningsCalendar || [];
   const relevant = [];
@@ -99,6 +107,7 @@ async function getUpcomingRelevantEarnings() {
       if (!marketCap || marketCap < 5_000_000_000) continue;
       relevant.push({
         ticker: earning.symbol,
+        name: sp500NameMap[earning.symbol] || '',
         date: earning.date,
         marketCap
       });
@@ -115,7 +124,7 @@ async function getSP500InvestmentOpportunities(now = new Date()) {
   const fromDate = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const toDate = now.toISOString().slice(0, 10);
   const earningsCalendarData = await getRecentEarningsCalendar(fromDate, toDate);
-  const sp500Tickers = await getSP500TickersCached();
+  const [sp500Tickers, sp500NameMap] = await getSP500TickersCached();
   const sp500Set = new Set(sp500Tickers);
 
   const earningsArray = earningsCalendarData.earningsCalendar || [];
@@ -155,6 +164,7 @@ async function getSP500InvestmentOpportunities(now = new Date()) {
       
       results.push({
         ticker,
+        name: sp500NameMap[ticker] || '',
         earningsDate: earning.date,
         marketCap,
         priceBeforeEarnings,
@@ -240,13 +250,13 @@ app.get('/', async (req, res) => {
 
           <h2>Top 5 Positive Changes (Day Before Earnings to Today)</h2><ul>`;
     topGainers.forEach(stock => {
-      html += `<li>${stock.ticker}: <span class="gainer">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceNow.toFixed(2)})</li>`;
+      html += `<li>${stock.ticker} (${stock.name}): <span class="gainer">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceNow.toFixed(2)})</li>`;
     });
     html += '</ul>';
 
     html += '<h2>Top 5 Drops (Day Before Earnings to Today)</h2><ul>';
     topLosers.forEach(stock => {
-      html += `<li>${stock.ticker}: <span class="loser">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceNow.toFixed(2)})</li>`;
+      html += `<li>${stock.ticker} (${stock.name}): <span class="loser">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceNow.toFixed(2)})</li>`;
     });
 
     // Add summary section
@@ -258,7 +268,7 @@ app.get('/', async (req, res) => {
       html += '<li>No relevant upcoming earnings found.</li>';
     } else {
       upcomingEarnings.forEach(function(e) {
-        html += `<li>${e.ticker}: ${e.date} (Market Cap: $${(e.marketCap/1e9).toFixed(1)}B)</li>`;
+        html += `<li>${e.ticker} (${e.name}): ${e.date} (Market Cap: $${(e.marketCap/1e9).toFixed(1)}B)</li>`;
       });
     }
     html += '</ul>';
