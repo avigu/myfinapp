@@ -67,6 +67,32 @@ async function getRecentEarningsCalendar(from, to) {
   }
 }
 
+// New helper to get upcoming relevant earnings
+async function getUpcomingRelevantEarnings() {
+  const now = new Date();
+  const fromDate = now.toISOString().slice(0, 10);
+  const toDate = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const earningsCalendarData = await getRecentEarningsCalendar(fromDate, toDate);
+  const sp500Tickers = await getSP500Tickers();
+  const sp500Set = new Set(sp500Tickers);
+  const earningsArray = earningsCalendarData.earningsCalendar || [];
+  const relevant = [];
+  for (const earning of earningsArray) {
+    if (!earning || !earning.symbol || !sp500Set.has(earning.symbol)) continue;
+    try {
+      const marketCap = await getMarketCap(earning.symbol);
+      if (!marketCap || marketCap < 5_000_000_000) continue;
+      relevant.push({
+        ticker: earning.symbol,
+        date: earning.date,
+        marketCap
+      });
+    } catch {}
+  }
+  // Sort by date ascending
+  return relevant.sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
 // --- Main Logic Function ---
 async function getSP500InvestmentOpportunities(now = new Date()) {
   const fromDate = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -125,6 +151,9 @@ app.get('/', async (req, res) => {
     const topGainers = opportunities.slice(0, 5);
     const topLosers = opportunities.slice(-5).reverse();
 
+    // Get upcoming relevant earnings
+    const upcomingEarnings = await getUpcomingRelevantEarnings();
+
     let html = `
       <html>
         <head>
@@ -181,21 +210,31 @@ app.get('/', async (req, res) => {
               loading.style.display = 'none';
             }
           </script>
-          <h2>Top 5 Positive Changes (Day Before Earnings to Today)</h2>
-          <ul>`;
+
+          <h2>Top 5 Positive Changes (Day Before Earnings to Today)</h2><ul>`;
     topGainers.forEach(stock => {
       html += `<li>${stock.ticker}: <span class="gainer">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceToday.toFixed(2)})</li>`;
     });
     html += '</ul>';
 
-   
     html += '<h2>Top 5 Drops (Day Before Earnings to Today)</h2><ul>';
     topLosers.forEach(stock => {
       html += `<li>${stock.ticker}: <span class="loser">${stock.change.toFixed(2)}%</span> (from $${stock.priceBeforeEarnings.toFixed(2)} to $${stock.priceToday.toFixed(2)})</li>`;
     });
 
-     // Add summary section
-     html += `<h2>Summary</h2><p><strong>${opportunities.length}</strong> S&P 500 stocks had earnings in the last 10 days.</p>`;
+    // Add summary section
+    html += `<h2>Summary</h2><p><strong>${opportunities.length}</strong> S&P 500 stocks had earnings in the last 10 days.</p>`;
+
+    // Add upcoming earnings section at the end
+    html += `<h2>Upcoming S&P 500 Earnings (Next 5 Days, Market Cap > $5B)</h2><ul>`;
+    if (upcomingEarnings.length === 0) {
+      html += '<li>No relevant upcoming earnings found.</li>';
+    } else {
+      upcomingEarnings.forEach(function(e) {
+        html += `<li>${e.ticker}: ${e.date} (Market Cap: $${(e.marketCap/1e9).toFixed(1)}B)</li>`;
+      });
+    }
+    html += '</ul>';
 
     html += '</ul></body></html>';
     res.send(html);
