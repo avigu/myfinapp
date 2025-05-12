@@ -7,7 +7,7 @@ const yahooFinance = require('yahoo-finance2').default;
 const app = express();
 const port = process.env.PORT || 3000;
 
-const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gfql9r01qhao4tdc70'; // Ensure you have this in .env
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || ''; // Ensure you have this in .env
 
 // --- Helper Functions (adapted from index.js) ---
 async function getSP500Tickers() {
