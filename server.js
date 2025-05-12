@@ -7,7 +7,9 @@ const yahooFinance = require('yahoo-finance2').default;
 const app = express();
 const port = process.env.PORT || 3000;
 
-const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || ''; // Ensure you have this in .env
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gfql9r01qhao4tdc70'; // Ensure you have this in .env
+
+app.use(express.static('public'));
 
 // --- Helper Functions (adapted from index.js) ---
 async function getSP500Tickers() {
@@ -128,6 +130,8 @@ app.get('/', async (req, res) => {
         <head>
           <title>S&P 500 Investment Opportunities</title>
           <meta name="viewport" content="width=device-width, initial-scale=1">
+          <link rel="manifest" href="/manifest.json">
+          <link rel="icon" href="/icon-192.png">
           <style>
             body { font-family: Arial, sans-serif; margin: 20px; }
             h1, h2 { color: #333; }
@@ -148,6 +152,13 @@ app.get('/', async (req, res) => {
               button { width: 100%; margin-top: 10px; }
             }
           </style>
+          <script>
+            if ('serviceWorker' in navigator) {
+              window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/service-worker.js');
+              });
+            }
+          </script>
         </head>
         <body>
           <h1>S&P 500 Investment Opportunities</h1>
