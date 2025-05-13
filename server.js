@@ -3,22 +3,55 @@ const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const yahooFinance = require('yahoo-finance2').default;
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gfql9r01qhao4tdc70'; // Ensure you have this in .env
 
+const DATA_DIR = path.join(__dirname, '.data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+function getCacheFilePath(name) {
+  return path.join(DATA_DIR, name + '.json');
+}
+
+function readCache(name, maxAgeMs) {
+  const file = getCacheFilePath(name);
+  if (!fs.existsSync(file)) return null;
+  try {
+    const { timestamp, data } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (Date.now() - timestamp < maxAgeMs) return data;
+  } catch {}
+  return null;
+}
+
+function writeCache(name, data) {
+  const file = getCacheFilePath(name);
+  fs.writeFileSync(file, JSON.stringify({ timestamp: Date.now(), data }), 'utf8');
+}
+
 app.use(express.static('public'));
 
 // --- Helper Functions (adapted from index.js) ---
 let cachedSP500Tickers = null;
 let cachedSP500NameMap = null;
+const TICKERS_CACHE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 async function getSP500TickersCached() {
+  const cache = readCache('sp500-tickers', TICKERS_CACHE_MS);
+  if (cache) {
+    cachedSP500Tickers = cache.tickers;
+    cachedSP500NameMap = cache.nameMap;
+    return [cachedSP500Tickers, cachedSP500NameMap];
+  }
   if (cachedSP500Tickers && cachedSP500NameMap) return [cachedSP500Tickers, cachedSP500NameMap];
   const { tickers, nameMap } = await getSP500Tickers();
   cachedSP500Tickers = tickers;
   cachedSP500NameMap = nameMap;
+  writeCache('sp500-tickers', { tickers, nameMap });
   return [cachedSP500Tickers, cachedSP500NameMap];
 }
 
@@ -49,33 +82,57 @@ async function getSP500Tickers() {
   return { tickers, nameMap };
 }
 
+const MARKETCAP_CACHE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 async function getMarketCap(ticker) {
+  const cache = readCache(`marketcap-${ticker}`, MARKETCAP_CACHE_MS);
+  if (cache !== null && cache !== undefined) {
+    return cache;
+  }
   try {
     const quote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] });
-    return quote.price.marketCap || null;
+    const cap = quote.price.marketCap || null;
+    writeCache(`marketcap-${ticker}`, cap);
+    return cap;
   } catch (err) {
     console.log(`${ticker}: Error fetching market cap from Yahoo: ${err.message}`);
     return null;
   }
 }
 
+const HISTORICAL_CACHE_MS = 1 * 60 * 60 * 1000; // 1 hour
+
 async function getHistoricalPrices(ticker, from, to) {
+  const cacheKey = `historical-${ticker}-${from}-${to}`;
+  const cache = readCache(cacheKey, HISTORICAL_CACHE_MS);
+  if (cache) {
+    return cache;
+  }
   try {
     const fromDate = new Date(from * 1000).toISOString().slice(0, 10);
     const toDate = new Date(to * 1000).toISOString().slice(0, 10);
     const history = await yahooFinance.historical(ticker, { period1: fromDate, period2: toDate, interval: '1d' });
-   // console.log(`History for ${ticker} from ${fromDate} to ${toDate}:`, history);
-    return { s: history.length > 1 ? 'ok' : 'no_data', c: history.map(day => day.close), t: history.map(day => Math.floor(new Date(day.date).getTime() / 1000)) };
+    const result = { s: history.length > 1 ? 'ok' : 'no_data', c: history.map(day => day.close), t: history.map(day => Math.floor(new Date(day.date).getTime() / 1000)) };
+    writeCache(cacheKey, result);
+    return result;
   } catch (err) {
     console.log(`${ticker}: Error fetching historical prices from Yahoo: ${err.message}`);
     return { s: 'error', c: [], t: [] };
   }
 }
 
+const EARNINGS_CACHE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 async function getRecentEarningsCalendar(from, to) {
+  const cacheKey = `earnings-${from}-${to}`;
+  const cache = readCache(cacheKey, EARNINGS_CACHE_MS);
+  if (cache) {
+    return cache;
+  }
   const url = `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_API_KEY}`;
   try {
     const response = await axios.get(url);
+    writeCache(cacheKey, response.data);
     return response.data;
   } catch (error) {
     console.error('Error fetching Finnhub earnings calendar:', error.message);
@@ -121,7 +178,7 @@ async function getUpcomingRelevantEarnings() {
 
 // --- Main Logic Function ---
 async function getSP500InvestmentOpportunities(now = new Date()) {
-  const fromDate = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const fromDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const toDate = now.toISOString().slice(0, 10);
   const earningsCalendarData = await getRecentEarningsCalendar(fromDate, toDate);
   const [sp500Tickers, sp500NameMap] = await getSP500TickersCached();
@@ -186,7 +243,8 @@ app.get('/', async (req, res) => {
     const now = new Date(startDate);
     const opportunities = await getSP500InvestmentOpportunities(now);
     const topGainers = opportunities.slice(0, 5);
-    const topLosers = opportunities.slice(-5).reverse();
+    // Only include stocks with negative change for topLosers
+    const topLosers = opportunities.filter(stock => stock.change < 0).slice(-5).reverse();
 
     // Get upcoming relevant earnings
     const upcomingEarnings = await getUpcomingRelevantEarnings();
