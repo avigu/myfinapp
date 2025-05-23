@@ -11,6 +11,7 @@
   "license": "ISC",
   "description": "S&P 500 earnings web app with mobile view and date selector.",
   "dependencies": {
+    "@google-cloud/storage": "^7.16.0",
     "axios": "^1.9.0",
     "cheerio": "^1.0.0",
     "dotenv": "^16.5.0",

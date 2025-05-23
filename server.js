@@ -3,70 +3,71 @@ const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const yahooFinance = require('yahoo-finance2').default;
-const fs = require('fs');
-const path = require('path');
+const { gcsExists, gcsRead, gcsWrite } = require('./gcs');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gfql9r01qhao4tdc70'; // Ensure you have this in .env
 
-const DATA_DIR = path.join(__dirname, '.data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-
-// --- In-memory and file-backed caches for historical prices and market cap ---
-const HISTORICAL_CACHE_FILE = path.join(DATA_DIR, 'historical-all.json');
-const MARKETCAP_CACHE_FILE = path.join(DATA_DIR, 'marketcap-all.json');
+// --- In-memory and GCS-backed caches for historical prices and market cap ---
+const HISTORICAL_CACHE_FILE = 'historical-all.json';
+const MARKETCAP_CACHE_FILE = 'marketcap-all.json';
 let historicalCache = {};
 let marketCapCache = {};
 
-// Load caches from disk if they exist
-if (fs.existsSync(HISTORICAL_CACHE_FILE)) {
-  try { historicalCache = JSON.parse(fs.readFileSync(HISTORICAL_CACHE_FILE, 'utf8')); } catch {}
-}
-if (fs.existsSync(MARKETCAP_CACHE_FILE)) {
-  try { marketCapCache = JSON.parse(fs.readFileSync(MARKETCAP_CACHE_FILE, 'utf8')); } catch {}
-}
+// Load caches from GCS if they exist
+(async () => {
+  try {
+    const histData = await gcsRead(HISTORICAL_CACHE_FILE);
+    if (histData) historicalCache = JSON.parse(histData);
+  } catch {}
+  try {
+    const capData = await gcsRead(MARKETCAP_CACHE_FILE);
+    if (capData) marketCapCache = JSON.parse(capData);
+  } catch {}
+})();
 
-function saveHistoricalCache() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(HISTORICAL_CACHE_FILE, JSON.stringify(historicalCache), 'utf8');
+async function saveHistoricalCache() {
+  await gcsWrite(HISTORICAL_CACHE_FILE, JSON.stringify(historicalCache));
 }
-function saveMarketCapCache() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(MARKETCAP_CACHE_FILE, JSON.stringify(marketCapCache), 'utf8');
+async function saveMarketCapCache() {
+  await gcsWrite(MARKETCAP_CACHE_FILE, JSON.stringify(marketCapCache));
 }
 
 function getCacheFilePath(name) {
-  return path.join(DATA_DIR, name + '.json');
+  return name + '.json';
 }
 
-function readCache(name, maxAgeMs) {
+async function readCache(name, maxAgeMs) {
   const file = getCacheFilePath(name);
-  if (!fs.existsSync(file)) return null;
   try {
-    const { timestamp, data } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    console.log(`[GCS READ] ${file}`);
+    const contents = await gcsRead(file);
+    if (!contents) return null;
+    const { timestamp, data } = JSON.parse(contents);
     if (Date.now() - timestamp < maxAgeMs) return data;
   } catch {}
   return null;
 }
 
-function writeCache(name, data) {
-  // Always ensure the directory exists before writing
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+async function writeCache(name, data) {
   const file = getCacheFilePath(name);
-  fs.writeFileSync(file, JSON.stringify({ timestamp: Date.now(), data }), 'utf8');
+  console.log(`[GCS WRITE] ${file}`);
+  await gcsWrite(file, JSON.stringify({ timestamp: Date.now(), data }));
 }
 
-function loadCacheFile(file) {
-  if (fs.existsSync(file)) {
-    try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-  }
+async function loadCacheFile(file) {
+  try {
+    console.log(`[GCS READ] ${file}`);
+    const contents = await gcsRead(file);
+    if (contents) return JSON.parse(contents);
+  } catch {}
   return {};
 }
-function saveCacheFile(file, obj) {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(obj), 'utf8');
+async function saveCacheFile(file, obj) {
+  console.log(`[GCS WRITE] ${file}`);
+  await gcsWrite(file, JSON.stringify(obj));
 }
 
 app.use(express.static('public'));
@@ -77,17 +78,18 @@ let cachedSP500NameMap = null;
 const TICKERS_CACHE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 async function getSP500TickersCached() {
-  const cache = readCache('sp500-tickers', TICKERS_CACHE_MS);
+  const cache = await readCache('sp500-tickers', TICKERS_CACHE_MS);
   if (cache) {
     cachedSP500Tickers = cache.tickers;
     cachedSP500NameMap = cache.nameMap;
     return [cachedSP500Tickers, cachedSP500NameMap];
   }
   if (cachedSP500Tickers && cachedSP500NameMap) return [cachedSP500Tickers, cachedSP500NameMap];
+  console.log('[NETWORK] Fetching S&P 500 tickers from Wikipedia');
   const { tickers, nameMap } = await getSP500Tickers();
   cachedSP500Tickers = tickers;
   cachedSP500NameMap = nameMap;
-  writeCache('sp500-tickers', { tickers, nameMap });
+  await writeCache('sp500-tickers', { tickers, nameMap });
   return [cachedSP500Tickers, cachedSP500NameMap];
 }
 
@@ -129,11 +131,12 @@ async function getMarketCap(ticker) {
   if (entry && (now - entry.timestamp < MARKETCAP_CACHE_MS)) {
     return entry.value;
   }
+  console.log(`[NETWORK] Fetching market cap for ${ticker}`);
   try {
     const quote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] });
     const cap = quote.price.marketCap || null;
     marketCapCache[ticker] = { value: cap, timestamp: now };
-    saveMarketCapCache();
+    await saveMarketCapCache();
     return cap;
   } catch (err) {
     console.log(`${ticker}: Error fetching market cap from Yahoo: ${err.message}`);
@@ -144,17 +147,26 @@ async function getMarketCap(ticker) {
 const HISTORICAL_CACHE_MS = 1 * 60 * 60 * 1000; // 1 hour
 
 function getHistoricalCacheFile(indexKey) {
-  return path.join(DATA_DIR, `historical-all-${indexKey}.json`);
+  return getCacheFilePath(`historical-all-${indexKey}`);
 }
 
-async function getHistoricalPrices(indexKey, ticker, from, to) {
-  // Defensive: check from and to are valid
+// Add per-request in-memory cache for historical cache files
+
+// Update getHistoricalPrices to accept a per-request cache object
+async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFiles) {
   if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) {
     console.log(`[WARN] Skipping getHistoricalPrices for ${ticker}: invalid from/to (${from}, ${to})`);
     return { s: 'error', c: [], t: [] };
   }
   const file = getHistoricalCacheFile(indexKey);
-  let cache = loadCacheFile(file);
+  // Use per-request cache
+  let cache;
+  if (historicalCacheFiles[file]) {
+    cache = historicalCacheFiles[file];
+  } else {
+    cache = await loadCacheFile(file);
+    historicalCacheFiles[file] = cache;
+  }
   const now = Date.now();
   if (!cache[ticker]) cache[ticker] = {};
   const key = `${from}-${to}`;
@@ -162,13 +174,14 @@ async function getHistoricalPrices(indexKey, ticker, from, to) {
   if (entry && (now - entry.timestamp < HISTORICAL_CACHE_MS)) {
     return entry.value;
   }
+  console.log(`[NETWORK] Fetching historical prices for ${ticker} (${key})`);
   try {
     const fromDate = new Date(from * 1000).toISOString().slice(0, 10);
     const toDate = new Date(to * 1000).toISOString().slice(0, 10);
     const history = await yahooFinance.historical(ticker, { period1: fromDate, period2: toDate, interval: '1d' });
     const result = { s: history.length > 1 ? 'ok' : 'no_data', c: history.map(day => day.close), t: history.map(day => Math.floor(new Date(day.date).getTime() / 1000)) };
     cache[ticker][key] = { value: result, timestamp: now };
-    saveCacheFile(file, cache);
+    await saveCacheFile(file, cache);
     return result;
   } catch (err) {
     console.log(`${ticker}: Error fetching historical prices from Yahoo: ${err.message}`);
@@ -180,14 +193,15 @@ const EARNINGS_CACHE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 async function getRecentEarningsCalendar(from, to) {
   const cacheKey = `earnings-${from}-${to}`;
-  const cache = readCache(cacheKey, EARNINGS_CACHE_MS);
+  const cache = await readCache(cacheKey, EARNINGS_CACHE_MS);
   if (cache) {
     return cache;
   }
+  console.log(`[NETWORK] Fetching earnings calendar for ${from} to ${to}`);
   const url = `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_API_KEY}`;
   try {
     const response = await axios.get(url);
-    writeCache(cacheKey, response.data);
+    await writeCache(cacheKey, response.data);
     return response.data;
   } catch (error) {
     console.error('Error fetching Finnhub earnings calendar:', error.message);
@@ -408,13 +422,15 @@ function renderTabbedHtml({ indexKey, startDate, topGainers, topLosers, opportun
 // --- Unified Main Logic ---
 async function getInvestmentOpportunities(indexKey, now = new Date()) {
   const index = INDICES[indexKey];
-  // Timing and network call counters
   let tTickers0 = Date.now();
   let tickerCalls = 0;
   let tTickers1, tEarnings0, tEarnings1, tHistTotal = 0, tPriceTotal = 0;
   let earningsCalls = 0;
   let historyCalls = 0;
   let currentPriceCalls = 0;
+
+  // Per-request in-memory cache for historical files
+  const historicalCacheFiles = {};
 
   // Fetch earnings
   tEarnings0 = Date.now();
@@ -427,16 +443,13 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
   tTickers1 = Date.now();
   const tTickersStart = Date.now();
   let [tickers, nameMap] = await getTickersCached(indexKey); tickerCalls++;
-  console.log(`[LOG] Got ${tickers.length} tickers for ${indexKey}:`, tickers.slice(0, 20));
   const tTickersEnd = Date.now();
   const tickerSet = new Set(tickers);
   const earningsArray = earningsCalendarData.earningsCalendar || [];
   const relevantEarnings = earningsArray.filter(e => e && e.symbol && tickerSet.has(e.symbol));
   const results = [];
-  console.log(`[LOG] Got ${relevantEarnings.length} relevant earnings for ${indexKey}:`, relevantEarnings.map(e => e.symbol).slice(0, 20));
   for (const earning of relevantEarnings) {
     const ticker = earning.symbol;
-    // Defensive: skip invalid tickers
     if (!ticker || ticker === 'SP500' || !/^[A-Z.-]{1,6}$/.test(ticker)) continue;
     const earningsDate = new Date(earning.date);
     if (isNaN(earningsDate.getTime())) {
@@ -449,24 +462,21 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
       continue;
     }
     try {
-      // Fetch market cap (network call if not cached)
       const tHist0 = Date.now();
       const marketCap = await getMarketCap(ticker);
       if (!marketCap || marketCap < index.minMarketCap) continue;
-      // Fetch historical prices
       const daysBack = 7;
       const fromUnixForHistory = earningsUnix - daysBack * 86400;
       const toUnixForHistory = earningsUnix;
-      // Defensive: check from/to are valid
       if (!Number.isFinite(fromUnixForHistory) || !Number.isFinite(toUnixForHistory)) {
         console.log(`[WARN] Skipping ${ticker}: invalid from/to unix (${fromUnixForHistory}, ${toUnixForHistory})`);
         continue;
       }
-      const history = await getHistoricalPrices(indexKey, ticker, fromUnixForHistory, toUnixForHistory); historyCalls++;
+      // Pass the per-request cache
+      const history = await getHistoricalPrices(indexKey, ticker, fromUnixForHistory, toUnixForHistory, historicalCacheFiles); historyCalls++;
       const tHist1 = Date.now();
       tHistTotal += (tHist1 - tHist0);
       if (!history || !history.c || history.c.length < 1) continue;
-      // Find the last trading day before the earnings date
       let priceBeforeEarnings = null;
       for (let i = history.t.length - 1; i >= 0; i--) {
         if (history.t[i] < earningsUnix) {
@@ -478,7 +488,6 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
         console.log(`[WARN] No trading day before earnings for ${ticker} (${earning.date})`);
         continue;
       }
-      // Fetch current price
       const tPrice0 = Date.now();
       const liveQuote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] }); currentPriceCalls++;
       const tPrice1 = Date.now();
@@ -537,12 +546,13 @@ async function getUpcomingRelevantEarnings(indexKey) {
 async function getTickersCached(indexKey) {
   const index = INDICES[indexKey];
   const cacheName = `${index.cachePrefix}-tickers`;
-  const cache = readCache(cacheName, TICKERS_CACHE_MS);
+  const cache = await readCache(cacheName, TICKERS_CACHE_MS);
   if (cache) {
     return [cache.tickers, cache.nameMap];
   }
+  console.log(`[NETWORK] Fetching ${indexKey} tickers from network`);
   const { tickers, nameMap } = await index.getTickers();
-  writeCache(cacheName, { tickers, nameMap });
+  await writeCache(cacheName, { tickers, nameMap });
   return [tickers, nameMap];
 }
 
