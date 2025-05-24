@@ -1,7 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
 const { getInvestmentOpportunities, getUpcomingRelevantEarnings } = require('../services/opportunities');
 const { renderTabbedHtml } = require('../utils/render');
+
+// Serve React app
+router.get('/app', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/app.html'));
+});
 
 router.get(['/', '/nasdaq'], async (req, res) => {
   try {
@@ -12,10 +18,29 @@ router.get(['/', '/nasdaq'], async (req, res) => {
     const topGainers = opportunities.slice(0, 5);
     const topLosers = opportunities.filter(stock => stock.change < 0).slice(-5).reverse();
     const upcomingEarnings = await getUpcomingRelevantEarnings(indexKey);
-    res.send(renderTabbedHtml({ indexKey, startDate, topGainers, topLosers, opportunities, upcomingEarnings }));
+    
+    // Check if the request wants JSON (from React app)
+    if (req.headers.accept && req.headers.accept.includes('application/json')) {
+      res.json({
+        indexKey,
+        startDate,
+        topGainers,
+        topLosers,
+        opportunities,
+        upcomingEarnings
+      });
+    } else {
+      // Serve the original HTML view
+      res.send(renderTabbedHtml({ indexKey, startDate, topGainers, topLosers, opportunities, upcomingEarnings }));
+    }
   } catch (error) {
     console.error('Error generating page:', error);
-    res.status(500).send('Error generating investment opportunities page.');
+    
+    if (req.headers.accept && req.headers.accept.includes('application/json')) {
+      res.status(500).json({ error: 'Error generating investment opportunities data.' });
+    } else {
+      res.status(500).send('Error generating investment opportunities page.');
+    }
   }
 });
 
