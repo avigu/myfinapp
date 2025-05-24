@@ -1,11 +1,16 @@
 # MyFinApp
 
-A modern financial web app that highlights S&P 500 & NASDAQ investment opportunities based on recent earnings reports. Features both a classic server-side rendered UI and a modern React client with beautiful, responsive design.
+A modern financial platform that highlights S&P 500 & NASDAQ investment opportunities based on recent earnings reports. Features a classic server-side rendered web UI, a modern React client, and a native mobile app.
+
+## Platforms Available
+- **🖥️ Web App**: Classic server-side rendered UI and modern React client
+- **📱 Mobile App**: Native iOS and Android app built with React Native
 
 ## Features
-- **Dual Interface Options:**
+- **Multiple Interface Options:**
   - 🖥️ Classic server-side rendered UI at `/` 
   - ⚛️ Modern React client at `/app`
+  - 📱 Native mobile app in `/mobileapp` directory
 - Lists top 5 S&P 500/NASDAQ gainers and losers after earnings
 - Real-time earnings calendar with upcoming reports
 - Mobile responsive design with modern UI components
@@ -15,6 +20,8 @@ A modern financial web app that highlights S&P 500 & NASDAQ investment opportuni
 - PWA support for mobile installation
 
 ## Quick Start
+
+### Web Application
 1. Clone the repository:
    ```sh
    git clone https://github.com/avigu/myfinapp.git
@@ -40,6 +47,27 @@ A modern financial web app that highlights S&P 500 & NASDAQ investment opportuni
    - **Classic UI**: [http://localhost:3000](http://localhost:3000)
    - **React Client**: [http://localhost:3000/app](http://localhost:3000/app)
 
+### Mobile App
+1. Navigate to the mobile app directory:
+   ```sh
+   cd mobileapp
+   ```
+2. Install dependencies:
+   ```sh
+   npm install
+   ```
+3. Start the mobile app:
+   ```sh
+   npm start
+   ```
+4. Use Expo Go app on your device to scan the QR code, or run in simulator:
+   ```sh
+   npm run ios    # iOS simulator
+   npm run android # Android emulator
+   ```
+
+For detailed mobile app setup instructions, see [mobileapp/README.md](./mobileapp/README.md).
+
 ## Development
 For development with hot reload:
 ```sh
@@ -58,7 +86,7 @@ myfinapp/
 ├── utils/
 │   ├── cache.js          # Caching utilities
 │   └── render.js         # Server-side HTML rendering
-├── client/               # React application
+├── client/               # React web application
 │   ├── src/
 │   │   ├── App.js        # Main React component
 │   │   ├── index.js      # React entry point
@@ -70,6 +98,14 @@ myfinapp/
 │   │   │   └── LoadingSpinner.js
 │   │   └── styles/
 │   │       └── App.css   # Modern CSS styles
+├── mobileapp/            # React Native mobile application
+│   ├── App.js           # Main mobile app component
+│   ├── src/
+│   │   ├── components/   # Mobile components
+│   │   ├── screens/      # App screens
+│   │   ├── services/     # API services
+│   │   └── constants/    # Design system
+│   └── README.md        # Mobile app documentation
 ├── public/
 │   ├── app.html          # React app entry point
 │   ├── js/               # Built React bundle
@@ -84,9 +120,10 @@ myfinapp/
 
 ## Technologies
 - **Backend**: Node.js, Express
-- **Frontend**: React 18, Modern ES6+
+- **Web Frontend**: React 18, Modern ES6+
+- **Mobile Frontend**: React Native with Expo
 - **Build**: Webpack, Babel
-- **Styling**: Modern CSS with CSS Variables
+- **Styling**: Modern CSS with CSS Variables, React Native StyleSheet
 - **Data Sources**: Yahoo Finance, Finnhub API
 - **Caching**: Google Cloud Storage
 
