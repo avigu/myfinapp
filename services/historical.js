@@ -16,13 +16,15 @@ async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFi
   
   const file = getHistoricalCacheFile(indexKey);
   
-  // Use per-request cache
+  // Use per-request in-memory cache to avoid repeated file reads
   let cache;
   if (historicalCacheFiles[file]) {
     cache = historicalCacheFiles[file];
+    console.log(`[CACHE] Using in-memory historical cache file for ${indexKey}`);
   } else {
     cache = await loadCacheFile(file);
     historicalCacheFiles[file] = cache;
+    console.log(`[CACHE] Loaded historical cache file from storage for ${indexKey}`);
   }
   
   const now = Date.now();
@@ -32,6 +34,7 @@ async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFi
   const entry = cache[ticker][key];
   
   if (entry && (now - entry.timestamp < HISTORICAL_CACHE_MS)) {
+    console.log(`[CACHE] Using cached historical data for ${ticker} (${key})`);
     return entry.value;
   }
   

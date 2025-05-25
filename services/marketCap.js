@@ -2,7 +2,7 @@
 const yahooFinance = require('yahoo-finance2').default;
 const { gcsRead, gcsWrite } = require('../gcs');
 
-const MARKETCAP_CACHE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MARKETCAP_CACHE_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
 const MARKETCAP_CACHE_FILE = 'marketcap-all.json';
 
 // In-memory cache

@@ -3,13 +3,31 @@ const axios = require('axios');
 const { readCache, writeCache } = require('../utils/cache');
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gfql9r01qhao4tdc70';
-const EARNINGS_CACHE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const EARNINGS_CACHE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+// In-memory cache to avoid repeated storage calls within the same request/session
+let earningsMemoryCache = {};
 
 async function getRecentEarningsCalendar(from, to) {
   const cacheKey = `earnings-${from}-${to}`;
+  
+  // Check in-memory cache first
+  const memoryEntry = earningsMemoryCache[cacheKey];
+  if (memoryEntry && (Date.now() - memoryEntry.timestamp < EARNINGS_CACHE_MS)) {
+    console.log(`[CACHE] Using in-memory cache for earnings ${from} to ${to}`);
+    return memoryEntry.data;
+  }
+  
+  // Check persistent cache
   const cache = await readCache(cacheKey, EARNINGS_CACHE_MS);
   
   if (cache) {
+    console.log(`[CACHE] Using persistent cache for earnings ${from} to ${to}`);
+    // Store in memory for future requests
+    earningsMemoryCache[cacheKey] = {
+      data: cache,
+      timestamp: Date.now()
+    };
     return cache;
   }
   
@@ -18,8 +36,16 @@ async function getRecentEarningsCalendar(from, to) {
   
   try {
     const response = await axios.get(url);
-    await writeCache(cacheKey, response.data);
-    return response.data;
+    const data = response.data;
+    
+    // Store in both persistent and memory cache
+    await writeCache(cacheKey, data);
+    earningsMemoryCache[cacheKey] = {
+      data: data,
+      timestamp: Date.now()
+    };
+    
+    return data;
   } catch (error) {
     console.error('Error fetching Finnhub earnings calendar:', error.message);
     return { earningsCalendar: [] }; // Return a default structure in case of error
