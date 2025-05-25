@@ -13,6 +13,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorView from '../components/ErrorView';
 import FilterControls from '../components/FilterControls';
 import TabBar from '../components/TabBar';
+import NetworkTest from '../components/NetworkTest';
 import ApiService from '../services/api';
 import { Colors, Spacing, Typography } from '../constants/styles';
 
@@ -25,22 +26,38 @@ const HomeScreen = () => {
   const [selectedDate, setSelectedDate] = useState(ApiService.getCurrentDate());
   const [activeTab, setActiveTab] = useState('gainers');
 
+  console.log('📱 [HomeScreen] Component rendered');
+  console.log('📱 [HomeScreen] State:', { loading, error: !!error, dataKeys: data ? Object.keys(data) : 'null' });
+
   const fetchData = async (showLoading = true) => {
+    console.log('📱 [HomeScreen] fetchData called, showLoading:', showLoading);
     if (showLoading) setLoading(true);
     setError(null);
     
     try {
-      const result = await ApiService.fetchStockData(selectedIndex, selectedDate);
+      console.log('📱 [HomeScreen] Calling ApiService.fetchStockData...');
+      
+      // Add a race condition with timeout
+      const fetchPromise = ApiService.fetchStockData(selectedIndex, selectedDate);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timed out after 15 seconds')), 15000)
+      );
+      
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      console.log('📱 [HomeScreen] API call successful, setting data');
       setData(result);
     } catch (err) {
+      console.error('📱 [HomeScreen] API call failed:', err.message);
       setError(err.message);
     } finally {
+      console.log('📱 [HomeScreen] fetchData finished');
       setLoading(false);
       setRefreshing(false);
     }
   };
 
   useEffect(() => {
+    console.log('📱 [HomeScreen] useEffect triggered, calling fetchData');
     fetchData();
   }, [selectedIndex, selectedDate]);
 
@@ -89,8 +106,25 @@ const HomeScreen = () => {
     </View>
   );
 
-  if (loading) return <LoadingSpinner message="Loading stock data..." />;
-  if (error) return <ErrorView error={error} onRetry={() => fetchData()} />;
+  // Show error state with NetworkTest
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <NetworkTest />
+        <ErrorView error={error} onRetry={() => fetchData()} />
+      </SafeAreaView>
+    );
+  }
+
+  // Show loading state with NetworkTest
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <NetworkTest />
+        <LoadingSpinner message="Loading stock data..." />
+      </SafeAreaView>
+    );
+  }
 
   const { topGainers = [], topLosers = [], opportunities = [] } = data || {};
 
@@ -104,6 +138,8 @@ const HomeScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <NetworkTest />
+      
       <FilterControls
         selectedIndex={selectedIndex}
         onIndexChange={setSelectedIndex}

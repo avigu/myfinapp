@@ -5,6 +5,10 @@ const BASE_URL = 'https://myfinapp-594349697203.europe-west1.run.app';
 class ApiService {
   async fetchStockData(selectedIndex = 'sp500', selectedDate = null) {
     try {
+      console.log('📱 [API] Starting fetchStockData...');
+      console.log('📱 [API] selectedIndex:', selectedIndex);
+      console.log('📱 [API] selectedDate:', selectedDate);
+      
       const url = selectedIndex === 'nasdaq' ? '/nasdaq' : '/';
       const params = new URLSearchParams();
       
@@ -15,23 +19,56 @@ class ApiService {
       const queryString = params.toString();
       const fetchUrl = `${BASE_URL}${url}${queryString ? `?${queryString}` : ''}`;
       
-      console.log('Fetching from:', fetchUrl);
+      console.log('📱 [API] Fetching from:', fetchUrl);
+      
+      // Add timeout and better error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
       
       const response = await fetch(fetchUrl, {
         headers: { 
           'Accept': 'application/json',
           'Content-Type': 'application/json'
-        }
+        },
+        signal: controller.signal
       });
       
+      clearTimeout(timeoutId);
+      
+      console.log('📱 [API] Response status:', response.status);
+      console.log('📱 [API] Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries())));
+      
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('📱 [API] HTTP Error Response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
       
       const data = await response.json();
+      console.log('📱 [API] Success! Data keys:', Object.keys(data || {}));
+      console.log('📱 [API] Data sample:', {
+        indexKey: data?.indexKey,
+        topGainersCount: data?.topGainers?.length || 0,
+        topLosersCount: data?.topLosers?.length || 0,
+        opportunitiesCount: data?.opportunities?.length || 0
+      });
+      
       return data;
     } catch (error) {
-      console.error('API Error:', error);
+      console.error('📱 [API] Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      if (error.name === 'AbortError') {
+        throw new Error('Request timed out. Please check your internet connection.');
+      }
+      
+      if (error.message.includes('fetch')) {
+        throw new Error('Network error. Please check your internet connection.');
+      }
+      
       throw new Error(`Failed to fetch data: ${error.message}`);
     }
   }
