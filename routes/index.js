@@ -3,6 +3,7 @@ const router = express.Router();
 const path = require('path');
 const { getInvestmentOpportunities, getInvestmentOpportunitiesWithBuyAnalysis, getUpcomingRelevantEarnings } = require('../services/opportunities');
 const { renderTabbedHtml } = require('../utils/render');
+const { analyzeStock, validateStockData } = require('../services/aiAnalysis');
 
 // Serve React app
 router.get('/app', (req, res) => {
@@ -88,6 +89,53 @@ router.get('/buy-opportunities', async (req, res) => {
     console.error(`[ERROR] Error generating buy opportunities:`, error);
     console.error(`[ERROR] Error stack:`, error.stack);
     res.status(500).json({ error: 'Error generating buy opportunities data.', details: error.message });
+  }
+});
+
+// New endpoint for AI stock analysis
+router.post('/api/ai-analysis', express.json(), async (req, res) => {
+  try {
+    const stockData = req.body;
+
+    // Validate input data
+    const validation = validateStockData(stockData);
+    if (!validation.isValid) {
+      return res.status(400).json({ 
+        error: 'Invalid input data', 
+        details: validation.errors 
+      });
+    }
+
+    // Call the AI analysis service
+    const aiAnalysis = await analyzeStock(stockData);
+    
+    res.json(aiAnalysis);
+
+  } catch (error) {
+    console.error('[ERROR] AI Analysis failed:', error);
+    
+    // Return appropriate error response based on error type
+    if (error.message.includes('OpenAI API key')) {
+      res.status(500).json({ 
+        error: 'AI service configuration error', 
+        details: 'OpenAI API key is not properly configured. Please contact support.' 
+      });
+    } else if (error.message.includes('quota exceeded')) {
+      res.status(503).json({ 
+        error: 'AI service temporarily unavailable', 
+        details: 'Service quota exceeded. Please try again later.' 
+      });
+    } else if (error.message.includes('rate limit')) {
+      res.status(429).json({ 
+        error: 'Too many requests', 
+        details: 'Please wait a moment before trying again.' 
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'AI analysis failed', 
+        details: error.message 
+      });
+    }
   }
 });
 

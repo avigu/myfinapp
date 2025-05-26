@@ -4,6 +4,8 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [analysisData, setAnalysisData] = useState(null);
+  const [loadingAI, setLoadingAI] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState(null);
   
   // Determine if this is a buy opportunity or regular stock
   const isBuyOpportunity = !!opportunity;
@@ -64,6 +66,57 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
       console.error('Failed to fetch analysis data:', error);
     } finally {
       setLoadingAnalysis(false);
+    }
+  };
+
+  // Function to fetch AI analysis
+  const fetchAIAnalysis = async () => {
+    if (aiAnalysis) return; // Don't fetch if already have AI analysis
+    
+    setLoadingAI(true);
+    try {
+      // Ensure we have analysis data first
+      if (!currentAnalysisData && !isBuyOpportunity) {
+        await fetchAnalysisData();
+      }
+      
+      const analysisToUse = getAnalysisData();
+      
+      const requestData = {
+        ticker,
+        priceMovement: change?.toFixed(2) || '0.00',
+        insiderBuys: (analysisToUse?.insiderData?.buyValue / 1000000)?.toFixed(1) || '0.0',
+        insiderSells: (analysisToUse?.insiderData?.sellValue / 1000000)?.toFixed(1) || '0.0',
+        peRatio: analysisToUse?.valuationData?.companyPE,
+        industryPE: analysisToUse?.valuationData?.industryPE,
+        analystRatings: analysisToUse?.analystData?.ratings,
+        priceTarget: analysisToUse?.analystData?.averagePriceTarget?.toFixed(2),
+        currentPrice: priceNow?.toFixed(2)
+      };
+
+      const response = await fetch('/api/ai-analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const aiData = await response.json();
+      setAiAnalysis(aiData);
+    } catch (error) {
+      console.error('Failed to fetch AI analysis:', error);
+      setAiAnalysis({
+        error: 'Failed to get AI analysis. Please try again.',
+        status: 'Error',
+        reason: error.message
+      });
+    } finally {
+      setLoadingAI(false);
     }
   };
 
@@ -240,6 +293,19 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
           )}
         </button>
         
+        {/* Ask AI button */}
+        <button 
+          className="ai-analysis-button"
+          onClick={fetchAIAnalysis}
+          disabled={loadingAI}
+        >
+          {loadingAI ? (
+            <>🤖 Thinking...</>
+          ) : (
+            <>🤖 Ask AI</>
+          )}
+        </button>
+        
         {/* External link button - clearly different design */}
         <a 
           className="external-link-button"
@@ -331,6 +397,32 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
               <button onClick={fetchAnalysisData} className="retry-analysis-button">
                 🔄 Retry Analysis
               </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Show AI analysis when available */}
+      {aiAnalysis && (
+        <div className="ai-analysis">
+          <div className="ai-analysis-header">
+            <h4>🤖 AI Second Opinion</h4>
+          </div>
+          {aiAnalysis.error ? (
+            <div className="ai-analysis-error">
+              <p>❌ {aiAnalysis.error}</p>
+              <button onClick={() => setAiAnalysis(null)} className="retry-ai-button">
+                🔄 Try Again
+              </button>
+            </div>
+          ) : (
+            <div className="ai-analysis-content">
+              <div className={`ai-status ai-status-${aiAnalysis.status?.toLowerCase()}`}>
+                <strong>Status: {aiAnalysis.status}</strong>
+              </div>
+              <div className="ai-reason">
+                <p>{aiAnalysis.reason}</p>
+              </div>
             </div>
           )}
         </div>
