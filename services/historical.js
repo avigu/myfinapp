@@ -1,11 +1,11 @@
 // services/historical.js
 const yahooFinance = require('yahoo-finance2').default;
-const { getCacheFilePath, loadCacheFile, saveCacheFile } = require('../utils/cache');
+const { loadCacheFile, saveCacheFile } = require('../utils/cache');
 
 const HISTORICAL_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day
 
 function getHistoricalCacheFile(indexKey) {
-  return getCacheFilePath(`historical-all-${indexKey}`);
+  return `historical-all-${indexKey}.json`;
 }
 
 async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFiles) {

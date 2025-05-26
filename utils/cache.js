@@ -14,8 +14,13 @@ if (bucketName) {
   async function checkBucketExists() {
     try {
       const bucket = storage.bucket(bucketName);
-      await bucket.exists();
-      console.log(`[INFO] Google Cloud Storage bucket ${bucketName} is accessible`);
+      const [exists] = await bucket.exists();
+      if (exists) {
+        console.log(`[INFO] Google Cloud Storage bucket ${bucketName} is accessible`);
+      } else {
+        console.warn(`[WARN] Google Cloud Storage bucket ${bucketName} does not exist. Caching disabled.`);
+        cachingEnabled = false;
+      }
     } catch (err) {
       console.warn(`[WARN] Google Cloud Storage bucket ${bucketName} is not accessible. Caching disabled.`, {
         message: err.message,
@@ -28,7 +33,7 @@ if (bucketName) {
   // Check bucket on module load
   checkBucketExists();
 } else {
-  console.log(`[INFO] No GCS_BUCKET_NAME environment variable set. Caching disabled.`);
+  console.log(`[INFO] No GCS_BUCKET environment variable set. Caching disabled.`);
 }
 
 async function readCache(file, maxAge) {
@@ -50,16 +55,21 @@ async function readCache(file, maxAge) {
       console.log(`[DEBUG] Cache expired for ${file}`);
     }
   } catch (err) {
-    console.error(`[ERROR] Cache read failed for ${file} from bucket ${bucketName}:`, {
-      message: err.message,
-      code: err.code,
-      bucketName: bucketName
-    });
-    
-    // Disable caching if bucket doesn't exist
+    // Only log as debug for missing files (normal case), error for other issues
     if (err.code === 404) {
-      console.warn(`[WARN] Disabling caching due to missing bucket`);
-      cachingEnabled = false;
+      console.log(`[DEBUG] Cache file ${file}.json not found (normal for first run or expired cache)`);
+    } else {
+      console.error(`[ERROR] Cache read failed for ${file} from bucket ${bucketName}:`, {
+        message: err.message,
+        code: err.code,
+        bucketName: bucketName
+      });
+      
+      // Only disable caching for bucket-level errors, not file-level 404s
+      if (err.code === 403 || (err.code === 404 && err.message.includes('bucket'))) {
+        console.warn(`[WARN] Disabling caching due to bucket access issue`);
+        cachingEnabled = false;
+      }
     }
   }
   return null;
@@ -85,9 +95,9 @@ async function writeCache(file, data) {
       fileName: `${file}.json`
     });
     
-    // Disable caching if bucket doesn't exist
-    if (err.code === 404) {
-      console.warn(`[WARN] Disabling caching due to missing bucket`);
+    // Only disable caching for bucket-level errors
+    if (err.code === 403 || (err.code === 404 && err.message.includes('bucket'))) {
+      console.warn(`[WARN] Disabling caching due to bucket access issue`);
       cachingEnabled = false;
     }
   }
@@ -107,16 +117,21 @@ async function loadCacheFile(file) {
     console.log(`[DEBUG] Cache file load successful for ${file}`);
     return JSON.parse(data.toString());
   } catch (err) {
-    console.error(`[ERROR] Cache file load failed for ${file} from bucket ${bucketName}:`, {
-      message: err.message,
-      code: err.code,
-      bucketName: bucketName
-    });
-    
-    // Disable caching if bucket doesn't exist
+    // Only log as debug for missing files (normal case), error for other issues
     if (err.code === 404) {
-      console.warn(`[WARN] Disabling caching due to missing bucket`);
-      cachingEnabled = false;
+      console.log(`[DEBUG] Cache file ${file} not found (normal for first run)`);
+    } else {
+      console.error(`[ERROR] Cache file load failed for ${file} from bucket ${bucketName}:`, {
+        message: err.message,
+        code: err.code,
+        bucketName: bucketName
+      });
+      
+      // Only disable caching for bucket-level errors
+      if (err.code === 403 || (err.code === 404 && err.message.includes('bucket'))) {
+        console.warn(`[WARN] Disabling caching due to bucket access issue`);
+        cachingEnabled = false;
+      }
     }
     
     return {};
@@ -142,9 +157,9 @@ async function saveCacheFile(file, data) {
       fileName: file
     });
     
-    // Disable caching if bucket doesn't exist
-    if (err.code === 404) {
-      console.warn(`[WARN] Disabling caching due to missing bucket`);
+    // Only disable caching for bucket-level errors
+    if (err.code === 403 || (err.code === 404 && err.message.includes('bucket'))) {
+      console.warn(`[WARN] Disabling caching due to bucket access issue`);
       cachingEnabled = false;
     }
   }
