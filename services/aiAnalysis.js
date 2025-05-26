@@ -20,6 +20,9 @@ const openai = new OpenAI({
  * @returns {Promise<Object>} AI analysis result with status and reasoning
  */
 async function analyzeStock(stockData) {
+  console.log('[AI-SERVICE] === AI Service analyzeStock Started ===');
+  console.log('[AI-SERVICE] Input stock data:', JSON.stringify(stockData, null, 2));
+
   const {
     ticker,
     priceMovement,
@@ -33,13 +36,16 @@ async function analyzeStock(stockData) {
   } = stockData;
 
   if (!ticker) {
+    console.error('[AI-SERVICE] Missing ticker in stock data');
     throw new Error('Ticker is required for AI analysis');
   }
 
   if (!process.env.OPENAI_API_KEY) {
+    console.error('[AI-SERVICE] OpenAI API key not configured');
     throw new Error('OpenAI API key is not configured. Please set OPENAI_API_KEY in your environment variables.');
   }
 
+  console.log('[AI-SERVICE] Building analysis prompt...');
   const prompt = buildAnalysisPrompt({
     ticker,
     priceMovement,
@@ -52,9 +58,17 @@ async function analyzeStock(stockData) {
     currentPrice
   });
 
+  console.log('[AI-SERVICE] Generated prompt:');
+  console.log('--- PROMPT START ---');
+  console.log(prompt);
+  console.log('--- PROMPT END ---');
+
   try {
+    console.log('[AI-SERVICE] Making OpenAI API call...');
+    const apiCallStart = Date.now();
+    
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
@@ -65,30 +79,55 @@ async function analyzeStock(stockData) {
       temperature: 0.3
     });
 
+    const apiCallEnd = Date.now();
+    console.log('[AI-SERVICE] OpenAI API call completed in', (apiCallEnd - apiCallStart), 'ms');
+    console.log('[AI-SERVICE] OpenAI response usage:', completion.usage);
+
     const aiResponse = completion.choices[0].message.content;
+    console.log('[AI-SERVICE] Raw AI response:');
+    console.log('--- AI RESPONSE START ---');
+    console.log(aiResponse);
+    console.log('--- AI RESPONSE END ---');
     
     // Parse the response to extract status and reason
+    console.log('[AI-SERVICE] Parsing AI response...');
     const parsedResponse = parseAIResponse(aiResponse);
+    console.log('[AI-SERVICE] Parsed response:', JSON.stringify(parsedResponse, null, 2));
     
-    return {
+    const finalResult = {
       ...parsedResponse,
       fullResponse: aiResponse,
       timestamp: new Date().toISOString(),
-      model: "gpt-3.5-turbo"
+      model: "gpt-4o-mini"
     };
 
+    console.log('[AI-SERVICE] Final result:', JSON.stringify(finalResult, null, 2));
+    console.log('[AI-SERVICE] === AI Service analyzeStock Completed Successfully ===');
+    
+    return finalResult;
+
   } catch (error) {
-    console.error('[ERROR] OpenAI API call failed:', error);
+    console.error('[AI-SERVICE] === AI Service analyzeStock Failed ===');
+    console.error('[AI-SERVICE] OpenAI API call failed:', {
+      message: error.message,
+      code: error.code,
+      type: error.type,
+      status: error.status
+    });
     
     // Handle specific OpenAI errors
     if (error.code === 'insufficient_quota') {
+      console.error('[AI-SERVICE] OpenAI quota exceeded');
       throw new Error('OpenAI API quota exceeded. Please check your billing.');
     } else if (error.code === 'invalid_api_key') {
+      console.error('[AI-SERVICE] Invalid OpenAI API key');
       throw new Error('Invalid OpenAI API key. Please check your configuration.');
     } else if (error.code === 'rate_limit_exceeded') {
+      console.error('[AI-SERVICE] OpenAI rate limit exceeded');
       throw new Error('OpenAI API rate limit exceeded. Please try again later.');
     }
     
+    console.error('[AI-SERVICE] Unknown OpenAI error:', error);
     throw new Error(`AI analysis failed: ${error.message}`);
   }
 }
@@ -108,28 +147,46 @@ function buildAnalysisPrompt(data) {
     industryPE,
     analystRatings,
     priceTarget,
-    currentPrice
+    currentPrice,
+    hasLimitedData
   } = data;
 
-  return `You are a financial analysis assistant in a stock insights app.
+  // Format insider activity
+  const insiderActivity = (insiderBuys === 'NaN' || insiderSells === 'NaN' || !insiderBuys || !insiderSells) 
+    ? 'N/A' 
+    : `$${insiderBuys}M buys, $${insiderSells}M sells`;
 
-A user wants a second opinion on a stock. Based on the provided data, determine:
+  // Format P/E ratio comparison
+  const peComparison = (!peRatio || !industryPE || peRatio === 'N/A' || industryPE === 'N/A')
+    ? 'N/A'
+    : `${peRatio} vs ${industryPE}`;
 
-1. A one-word status: **Buy**, **Hold**, or **Sell**
-2. A short explanation (2–3 sentences max), using plain English, with the key data points that support the recommendation.
+  // Format analyst ratings
+  const analystRatingsText = (!analystRatings || !analystRatings.buy)
+    ? 'N/A'
+    : `${analystRatings.buy} Buy, ${analystRatings.hold} Hold, ${analystRatings.sell} Sell`;
 
-Avoid hype. Be analytical and clear.
+  // Format price target comparison
+  const priceTargetComparison = (!priceTarget || !currentPrice || priceTarget === 'N/A')
+    ? 'N/A'
+    : `$${priceTarget} vs $${currentPrice}`;
+
+  return `You are a financial analysis assistant in a stock insights app that implements a "buy low" strategy based on post-earnings stock moves. When a stock drops or jumps around earnings, the app flags it for deeper analysis—our goal is to decide if a sharp drop is likely to recover in the next three months (buy opportunity) or if it reflects structural weakness (avoid or hold).
 
 ## Input:
-
 - **Ticker**: ${ticker}
 - **Post-earnings price movement**: ${priceMovement}%
-- **Insider activity (last 3 months)**: $${insiderBuys}M buys, $${insiderSells}M sells
-- **P/E ratio**: ${peRatio || 'N/A'}
-- **Industry avg P/E**: ${industryPE || 'N/A'}
-- **Analyst ratings**: ${analystRatings?.buy || 0} Buy, ${analystRatings?.hold || 0} Hold, ${analystRatings?.sell || 0} Sell
-- **Price target**: $${priceTarget || 'N/A'}
-- **Current price**: $${currentPrice}
+- **Insider activity (last 3 months)**: ${insiderActivity}
+- **P/E ratio vs industry**: ${peComparison}
+- **Analyst ratings**: ${analystRatingsText}
+- **Price target vs current price**: ${priceTargetComparison}
+
+## Task:
+1. **Status**: one word—**Buy**, **Hold**, or **Sell**  
+2. **Reason**: 2–3 sentences explaining:
+   - Whether the drop looks like a transient overreaction (bad quarter) or a deeper concern  
+   - Reference the available data (insider buys, relative valuation, sentiment)  
+   - If key data is missing, note it briefly
 
 ## Output format:
 

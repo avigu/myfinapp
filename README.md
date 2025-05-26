@@ -46,10 +46,12 @@ A modern financial platform that highlights S&P 500 & NASDAQ investment opportun
    - The Finnhub API key is optional (a default is provided)
    - The OpenAI API key is required for AI analysis features
    - The GCS_BUCKET is optional for caching. If not provided, caching will be disabled and the app will work without Google Cloud Storage
+   - If using Google Cloud Storage, place your service account key file as `gcs-key.json` in the project root
 5. Start the server:
    ```sh
    npm start
    ```
+   The start command automatically sets up Google Cloud credentials if the `gcs-key.json` file exists.
 6. Access the app:
    - **Classic UI**: [http://localhost:3000](http://localhost:3000)
    - **React Client**: [http://localhost:3000/app](http://localhost:3000/app)
@@ -80,7 +82,7 @@ For development with hot reload:
 ```sh
 npm run dev
 ```
-This will start the server with nodemon and build the React client in watch mode.
+This will start the server with nodemon and build the React client in watch mode. Google Cloud credentials are automatically configured if the `gcs-key.json` file exists.
 
 ## Project Structure
 ```

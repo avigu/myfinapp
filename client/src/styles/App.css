@@ -1644,4 +1644,55 @@ body {
   .unified-stock-card .ai-reason p {
     font-size: 0.9rem;
   }
+}
+
+/* AI Analysis Section within detailed analysis */
+.unified-stock-card .ai-analysis-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.unified-stock-card .ai-analysis-section .ai-analysis-button {
+  background: linear-gradient(135deg, #6f42c1 0%, #8e44ad 100%);
+  color: white;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: var(--border-radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 0.95rem;
+  box-shadow: 0 2px 8px rgba(111, 66, 193, 0.3);
+}
+
+.unified-stock-card .ai-analysis-section .ai-analysis-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(111, 66, 193, 0.4);
+}
+
+.unified-stock-card .ai-analysis-section .ai-analysis-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 768px) {
+  .unified-stock-card .ai-analysis {
+    padding: 0.8rem;
+  }
+  
+  .unified-stock-card .ai-status {
+    padding: 0.6rem 0.8rem;
+    font-size: 0.9rem;
+  }
+  
+  .unified-stock-card .ai-reason {
+    padding: 0.8rem;
+  }
+  
+  .unified-stock-card .ai-reason p {
+    font-size: 0.9rem;
+  }
 } 

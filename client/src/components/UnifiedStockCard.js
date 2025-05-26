@@ -17,6 +17,7 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
   const fetchAnalysisData = async () => {
     if (analysisData || isBuyOpportunity) return; // Don't fetch if already have data or is buy opportunity
     
+    console.log('[FRONTEND-ANALYSIS] Starting analysis data fetch...');
     setLoadingAnalysis(true);
     try {
       // TODO: Replace with actual API call to your backend
@@ -27,12 +28,21 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
       await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate loading
       
       // Generate realistic insider trading data
-      const buyValue = Math.floor(Math.random() * 5000000);
-      const sellValue = Math.floor(Math.random() * 3000000);
+      const buyValue = Math.floor(Math.random() * 5000000) + 100000; // Ensure at least some value
+      const sellValue = Math.floor(Math.random() * 3000000) + 50000; // Ensure at least some value
       
       // Calculate shares based on current price (more realistic)
       const totalBuys = Math.floor(buyValue / priceNow);
       const totalSells = Math.floor(sellValue / priceNow);
+      
+      // Generate realistic P/E ratios
+      const companyPE = (Math.random() * 30 + 5).toFixed(1);
+      const industryPE = (Math.random() * 25 + 8).toFixed(1);
+      
+      // Generate realistic analyst ratings
+      const buyRatings = Math.floor(Math.random() * 15) + 1; // At least 1
+      const holdRatings = Math.floor(Math.random() * 10) + 1; // At least 1
+      const sellRatings = Math.floor(Math.random() * 5);
       
       const mockData = {
         insiderData: {
@@ -44,26 +54,31 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
           hasValidPrices: Math.random() > 0.3
         },
         valuationData: {
-          companyPE: (Math.random() * 30 + 5).toFixed(1),
-          industryPE: (Math.random() * 25 + 8).toFixed(1),
-          isUndervalued: Math.random() > 0.4,
+          companyPE: companyPE,
+          industryPE: industryPE,
+          isUndervalued: parseFloat(companyPE) < parseFloat(industryPE),
           sector: ['Technology', 'Healthcare', 'Finance', 'Energy', 'Consumer'][Math.floor(Math.random() * 5)]
         },
         analystData: {
           sentiment: Math.random() > 0.6 ? '🟢' : Math.random() > 0.3 ? '🟡' : '🔴',
           ratings: { 
-            buy: Math.floor(Math.random() * 15), 
-            hold: Math.floor(Math.random() * 10), 
-            sell: Math.floor(Math.random() * 5) 
+            buy: buyRatings, 
+            hold: holdRatings, 
+            sell: sellRatings 
           },
           averagePriceTarget: priceNow * (1 + (Math.random() * 0.4 - 0.2)),
           upsidePotential: ((Math.random() * 40) - 20).toFixed(1)
         }
       };
       
+      console.log('[FRONTEND-ANALYSIS] Generated mock data:', JSON.stringify(mockData, null, 2));
       setAnalysisData(mockData);
+      console.log('[FRONTEND-ANALYSIS] Analysis data fetch completed successfully');
+      
     } catch (error) {
-      console.error('Failed to fetch analysis data:', error);
+      console.error('[FRONTEND-ANALYSIS] Failed to fetch analysis data:', error);
+      // Don't set any fallback data - let the error state handle it
+      setAnalysisData(null);
     } finally {
       setLoadingAnalysis(false);
     }
@@ -71,29 +86,40 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
 
   // Function to fetch AI analysis
   const fetchAIAnalysis = async () => {
-    if (aiAnalysis) return; // Don't fetch if already have AI analysis
+    console.log('[FRONTEND-AI] === Frontend AI Analysis Started ===');
+    console.log('[FRONTEND-AI] Stock data:', { ticker, change, priceNow, priceBeforeEarnings, marketCap });
+    console.log('[FRONTEND-AI] Is buy opportunity:', isBuyOpportunity);
     
     setLoadingAI(true);
+    setAiAnalysis(null);
+    
     try {
-      // Ensure we have analysis data first
-      if (!currentAnalysisData && !isBuyOpportunity) {
-        await fetchAnalysisData();
-      }
-      
+      // Get the current analysis data (should be available since we're in the analysis panel)
       const analysisToUse = getAnalysisData();
       
+      if (!analysisToUse) {
+        console.error('[FRONTEND-AI] No analysis data available - this should not happen when called from analysis panel');
+        throw new Error('Analysis data not available. Please try refreshing the analysis.');
+      }
+      
+      console.log('[FRONTEND-AI] Using analysis data:', JSON.stringify(analysisToUse, null, 2));
+      
+      // Build request with real analysis data
       const requestData = {
         ticker,
         priceMovement: change?.toFixed(2) || '0.00',
-        insiderBuys: (analysisToUse?.insiderData?.buyValue / 1000000)?.toFixed(1) || '0.0',
-        insiderSells: (analysisToUse?.insiderData?.sellValue / 1000000)?.toFixed(1) || '0.0',
-        peRatio: analysisToUse?.valuationData?.companyPE,
-        industryPE: analysisToUse?.valuationData?.industryPE,
-        analystRatings: analysisToUse?.analystData?.ratings,
-        priceTarget: analysisToUse?.analystData?.averagePriceTarget?.toFixed(2),
-        currentPrice: priceNow?.toFixed(2)
+        insiderBuys: (analysisToUse.insiderData.buyValue / 1000000).toFixed(1),
+        insiderSells: (analysisToUse.insiderData.sellValue / 1000000).toFixed(1),
+        peRatio: analysisToUse.valuationData.companyPE,
+        industryPE: analysisToUse.valuationData.industryPE,
+        analystRatings: analysisToUse.analystData.ratings,
+        priceTarget: analysisToUse.analystData.averagePriceTarget?.toFixed(2),
+        currentPrice: priceNow?.toFixed(2),
+        // Don't use hasLimitedData flag since we have full analysis data
       };
 
+      console.log('[FRONTEND-AI] Request data with real analysis:', JSON.stringify(requestData, null, 2));
+      
       const response = await fetch('/api/ai-analysis', {
         method: 'POST',
         headers: {
@@ -102,14 +128,28 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
         body: JSON.stringify(requestData)
       });
 
+      console.log('[FRONTEND-AI] Response status:', response.status);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[FRONTEND-AI] HTTP error response:', errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const aiData = await response.json();
+      console.log('[FRONTEND-AI] AI response received:', JSON.stringify(aiData, null, 2));
+      
       setAiAnalysis(aiData);
+      console.log('[FRONTEND-AI] === Frontend AI Analysis Completed Successfully ===');
+      
     } catch (error) {
-      console.error('Failed to fetch AI analysis:', error);
+      console.error('[FRONTEND-AI] === Frontend AI Analysis Failed ===');
+      console.error('[FRONTEND-AI] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      
       setAiAnalysis({
         error: 'Failed to get AI analysis. Please try again.',
         status: 'Error',
@@ -293,19 +333,6 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
           )}
         </button>
         
-        {/* Ask AI button */}
-        <button 
-          className="ai-analysis-button"
-          onClick={fetchAIAnalysis}
-          disabled={loadingAI}
-        >
-          {loadingAI ? (
-            <>🤖 Thinking...</>
-          ) : (
-            <>🤖 Ask AI</>
-          )}
-        </button>
-        
         {/* External link button - clearly different design */}
         <a 
           className="external-link-button"
@@ -389,6 +416,21 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
                     Sentiment: {currentAnalysisData.analystData.sentiment}
                   </div>
                 </div>
+              </div>
+
+              {/* Ask AI button - now inside analysis panel with real data */}
+              <div className="ai-analysis-section">
+                <button 
+                  className="ai-analysis-button"
+                  onClick={fetchAIAnalysis}
+                  disabled={loadingAI}
+                >
+                  {loadingAI ? (
+                    <>🤖 AI is thinking...</>
+                  ) : (
+                    <>🤖 Ask AI for Second Opinion</>
+                  )}
+                </button>
               </div>
             </>
           ) : (

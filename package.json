@@ -4,10 +4,10 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js",
+    "start": "export GOOGLE_APPLICATION_CREDENTIALS=\"./gcs-key.json\" && node server.js",
     "build": "webpack --mode production",
     "build:dev": "webpack --mode development",
-    "dev": "concurrently \"npm run build:dev -- --watch\" \"nodemon server.js\""
+    "dev": "concurrently \"npm run build:dev -- --watch\" \"export GOOGLE_APPLICATION_CREDENTIALS=\\\"./gcs-key.json\\\" && nodemon server.js\""
   },
   "keywords": [],
   "author": "",
