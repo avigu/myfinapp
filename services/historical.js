@@ -2,7 +2,7 @@
 const yahooFinance = require('yahoo-finance2').default;
 const { getCacheFilePath, loadCacheFile, saveCacheFile } = require('../utils/cache');
 
-const HISTORICAL_CACHE_MS = 1 * 60 * 60 * 1000; // 1 hour
+const HISTORICAL_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day
 
 function getHistoricalCacheFile(indexKey) {
   return getCacheFilePath(`historical-all-${indexKey}`);
@@ -10,7 +10,7 @@ function getHistoricalCacheFile(indexKey) {
 
 async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFiles) {
   if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) {
-    console.log(`[WARN] Skipping getHistoricalPrices for ${ticker}: invalid from/to (${from}, ${to})`);
+    console.error(`[ERROR] Invalid from/to for ${ticker}: (${from}, ${to})`);
     return { s: 'error', c: [], t: [] };
   }
   
@@ -20,11 +20,9 @@ async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFi
   let cache;
   if (historicalCacheFiles[file]) {
     cache = historicalCacheFiles[file];
-    console.log(`[CACHE] Using in-memory historical cache file for ${indexKey}`);
   } else {
     cache = await loadCacheFile(file);
     historicalCacheFiles[file] = cache;
-    console.log(`[CACHE] Loaded historical cache file from storage for ${indexKey}`);
   }
   
   const now = Date.now();
@@ -34,11 +32,9 @@ async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFi
   const entry = cache[ticker][key];
   
   if (entry && (now - entry.timestamp < HISTORICAL_CACHE_MS)) {
-    console.log(`[CACHE] Using cached historical data for ${ticker} (${key})`);
     return entry.value;
   }
   
-  console.log(`[NETWORK] Fetching historical prices for ${ticker} (${key})`);
   try {
     const fromDate = new Date(from * 1000).toISOString().slice(0, 10);
     const toDate = new Date(to * 1000).toISOString().slice(0, 10);
@@ -60,7 +56,7 @@ async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFi
     
     return result;
   } catch (err) {
-    console.log(`${ticker}: Error fetching historical prices from Yahoo: ${err.message}`);
+    console.error(`[ERROR] ${ticker}: Error fetching historical prices from Yahoo: ${err.message}`);
     return { s: 'error', c: [], t: [] };
   }
 }

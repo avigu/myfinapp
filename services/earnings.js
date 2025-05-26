@@ -14,7 +14,6 @@ async function getRecentEarningsCalendar(from, to) {
   // Check in-memory cache first
   const memoryEntry = earningsMemoryCache[cacheKey];
   if (memoryEntry && (Date.now() - memoryEntry.timestamp < EARNINGS_CACHE_MS)) {
-    console.log(`[CACHE] Using in-memory cache for earnings ${from} to ${to}`);
     return memoryEntry.data;
   }
   
@@ -22,7 +21,6 @@ async function getRecentEarningsCalendar(from, to) {
   const cache = await readCache(cacheKey, EARNINGS_CACHE_MS);
   
   if (cache) {
-    console.log(`[CACHE] Using persistent cache for earnings ${from} to ${to}`);
     // Store in memory for future requests
     earningsMemoryCache[cacheKey] = {
       data: cache,
@@ -31,7 +29,6 @@ async function getRecentEarningsCalendar(from, to) {
     return cache;
   }
   
-  console.log(`[NETWORK] Fetching earnings calendar for ${from} to ${to}`);
   const url = `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_API_KEY}`;
   
   try {
@@ -47,11 +44,9 @@ async function getRecentEarningsCalendar(from, to) {
     
     return data;
   } catch (error) {
-    console.error('Error fetching Finnhub earnings calendar:', error.message);
+    console.error('[ERROR] Error fetching Finnhub earnings calendar:', error.message);
     return { earningsCalendar: [] }; // Return a default structure in case of error
   }
 }
 
-module.exports = {
-  getRecentEarningsCalendar,
-}; 
+module.exports = { getRecentEarningsCalendar }; 

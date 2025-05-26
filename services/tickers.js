@@ -18,7 +18,6 @@ async function getTickersCached(indexKey) {
   // Check in-memory cache first
   const memoryEntry = tickersMemoryCache[cacheName];
   if (memoryEntry && (Date.now() - memoryEntry.timestamp < TICKERS_CACHE_MS)) {
-    console.log(`[CACHE] Using in-memory cache for ${indexKey} tickers`);
     return [memoryEntry.data.tickers, memoryEntry.data.nameMap];
   }
   
@@ -26,7 +25,6 @@ async function getTickersCached(indexKey) {
   const cache = await readCache(cacheName, TICKERS_CACHE_MS);
   
   if (cache) {
-    console.log(`[CACHE] Using persistent cache for ${indexKey} tickers`);
     // Store in memory for future requests
     tickersMemoryCache[cacheName] = {
       data: cache,
@@ -35,7 +33,6 @@ async function getTickersCached(indexKey) {
     return [cache.tickers, cache.nameMap];
   }
   
-  console.log(`[NETWORK] Fetching ${indexKey} tickers from network`);
   const { tickers, nameMap } = await index.getTickers();
   const data = { tickers, nameMap };
   
@@ -49,6 +46,4 @@ async function getTickersCached(indexKey) {
   return [tickers, nameMap];
 }
 
-module.exports = {
-  getTickersCached,
-}; 
+module.exports = { getTickersCached }; 

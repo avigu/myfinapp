@@ -1,54 +1,55 @@
 // utils/cache.js
-const { gcsRead, gcsWrite } = require('../gcs');
+const { Storage } = require('@google-cloud/storage');
 
-function getCacheFilePath(name) {
-  return name + '.json';
-}
+const storage = new Storage();
+const bucketName = 'myfinapp-cache';
 
-async function readCache(name, maxAgeMs) {
-  const file = getCacheFilePath(name);
+async function readCache(file, maxAge) {
   try {
-    const contents = await gcsRead(file);
-    if (!contents) return null;
-    const { timestamp, data } = JSON.parse(contents);
-    if (Date.now() - timestamp < maxAgeMs) return data;
+    const bucket = storage.bucket(bucketName);
+    const fileObj = bucket.file(`${file}.json`);
+    const [data] = await fileObj.download();
+    const cache = JSON.parse(data.toString());
+    if (Date.now() - cache.timestamp < maxAge) {
+      return cache.data;
+    }
   } catch (err) {
-    console.log(`[CACHE] Error reading cache ${file}:`, err.message);
+    console.error(`[ERROR] Cache read failed for ${file}:`, err.message);
   }
   return null;
 }
 
-async function writeCache(name, data) {
-  const file = getCacheFilePath(name);
+async function writeCache(file, data) {
   try {
-    await gcsWrite(file, JSON.stringify({ timestamp: Date.now(), data }));
+    const bucket = storage.bucket(bucketName);
+    const fileObj = bucket.file(`${file}.json`);
+    const cache = { data, timestamp: Date.now() };
+    await fileObj.save(JSON.stringify(cache));
   } catch (err) {
-    console.log(`[CACHE] Error writing cache ${file}:`, err.message);
+    console.error(`[ERROR] Cache write failed for ${file}:`, err.message);
   }
 }
 
 async function loadCacheFile(file) {
   try {
-    const contents = await gcsRead(file);
-    if (contents) return JSON.parse(contents);
+    const bucket = storage.bucket(bucketName);
+    const fileObj = bucket.file(file);
+    const [data] = await fileObj.download();
+    return JSON.parse(data.toString());
   } catch (err) {
-    console.log(`[CACHE] Error loading cache file ${file}:`, err.message);
+    console.error(`[ERROR] Cache file load failed for ${file}:`, err.message);
+    return {};
   }
-  return {};
 }
 
-async function saveCacheFile(file, obj) {
+async function saveCacheFile(file, data) {
   try {
-    await gcsWrite(file, JSON.stringify(obj));
+    const bucket = storage.bucket(bucketName);
+    const fileObj = bucket.file(file);
+    await fileObj.save(JSON.stringify(data));
   } catch (err) {
-    console.log(`[CACHE] Error saving cache file ${file}:`, err.message);
+    console.error(`[ERROR] Cache file save failed for ${file}:`, err.message);
   }
 }
 
-module.exports = {
-  getCacheFilePath,
-  readCache,
-  writeCache,
-  loadCacheFile,
-  saveCacheFile,
-}; 
+module.exports = { readCache, writeCache, loadCacheFile, saveCacheFile }; 

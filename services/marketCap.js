@@ -1,29 +1,30 @@
 // services/marketCap.js
 const yahooFinance = require('yahoo-finance2').default;
-const { gcsRead, gcsWrite } = require('../gcs');
+const { readCache, writeCache } = require('../utils/cache');
 
-const MARKETCAP_CACHE_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
-const MARKETCAP_CACHE_FILE = 'marketcap-all.json';
+const MARKETCAP_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day
 
-// In-memory cache
+// In-memory cache for market cap data
 let marketCapCache = {};
 
-// Load cache from GCS on startup
-(async () => {
+// Load market cap cache on startup
+async function loadMarketCapCache() {
   try {
-    const capData = await gcsRead(MARKETCAP_CACHE_FILE);
-    if (capData) marketCapCache = JSON.parse(capData);
-    console.log(`[CACHE] Loaded market cap cache with ${Object.keys(marketCapCache).length} entries`);
+    const cache = await readCache('market-cap-cache', MARKETCAP_CACHE_MS);
+    if (cache) {
+      marketCapCache = cache;
+    }
   } catch (err) {
-    console.log(`[CACHE] Could not load market cap cache: ${err.message}`);
+    console.error(`[ERROR] Could not load market cap cache: ${err.message}`);
   }
-})();
+}
 
+// Save market cap cache
 async function saveMarketCapCache() {
   try {
-    await gcsWrite(MARKETCAP_CACHE_FILE, JSON.stringify(marketCapCache));
+    await writeCache('market-cap-cache', marketCapCache);
   } catch (err) {
-    console.log(`[CACHE] Error saving market cap cache: ${err.message}`);
+    console.error(`[ERROR] Error saving market cap cache: ${err.message}`);
   }
 }
 
@@ -35,7 +36,6 @@ async function getMarketCap(ticker) {
     return entry.value;
   }
   
-  console.log(`[NETWORK] Fetching market cap for ${ticker}`);
   try {
     const quote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] });
     const cap = quote.price.marketCap || null;
@@ -45,11 +45,12 @@ async function getMarketCap(ticker) {
     
     return cap;
   } catch (err) {
-    console.log(`${ticker}: Error fetching market cap from Yahoo: ${err.message}`);
+    console.error(`[ERROR] ${ticker}: Error fetching market cap from Yahoo: ${err.message}`);
     return null;
   }
 }
 
-module.exports = {
-  getMarketCap,
-}; 
+// Initialize cache on module load
+loadMarketCapCache();
+
+module.exports = { getMarketCap }; 

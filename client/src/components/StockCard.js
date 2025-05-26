@@ -1,6 +1,6 @@
 import React from 'react';
 
-const StockCard = ({ stock, rank, type }) => {
+const StockCard = ({ stock, rank, type, buyOpportunity }) => {
   const { ticker, change, priceBeforeEarnings, priceNow, marketCap, earningsDate } = stock;
   
   const formatMarketCap = (cap) => {
@@ -19,7 +19,14 @@ const StockCard = ({ stock, rank, type }) => {
     return `${sign}${change?.toFixed(2) || '0.00'}%`;
   };
 
-  const cardClass = `stock-card ${type} ${change >= 5 ? 'hot' : ''} ${change <= -5 ? 'cold' : ''}`;
+  const getBuyOpportunityClass = () => {
+    if (!buyOpportunity) return '';
+    if (buyOpportunity.recommendation === 'Strong Buy') return 'strong-buy-opportunity';
+    if (buyOpportunity.recommendation === 'Moderate Buy') return 'moderate-buy-opportunity';
+    return '';
+  };
+
+  const cardClass = `stock-card ${type} ${change >= 5 ? 'hot' : ''} ${change <= -5 ? 'cold' : ''} ${getBuyOpportunityClass()}`;
 
   return (
     <div className={cardClass}>
@@ -31,6 +38,13 @@ const StockCard = ({ stock, rank, type }) => {
             <span className="earnings-date">📅 {earningsDate}</span>
           )}
         </div>
+        {buyOpportunity && (
+          <div className="buy-opportunity-indicator">
+            <span className={`buy-signal ${buyOpportunity.recommendation.toLowerCase().replace(' ', '-')}`}>
+              {buyOpportunity.recommendationColor}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="price-info">
@@ -52,6 +66,29 @@ const StockCard = ({ stock, rank, type }) => {
         </div>
       </div>
 
+      {buyOpportunity && (
+        <div className="buy-opportunity-summary">
+          <div className="criteria-met">
+            <span className="label">Buy Criteria:</span>
+            <span className="value">{buyOpportunity.criteriaMetCount}/4</span>
+          </div>
+          <div className="recommendation">
+            <span className="label">Signal:</span>
+            <span className={`value ${buyOpportunity.recommendation.toLowerCase().replace(' ', '-')}`}>
+              {buyOpportunity.recommendation}
+            </span>
+          </div>
+          {buyOpportunity.analystData?.upsidePotential && (
+            <div className="upside-potential">
+              <span className="label">Upside:</span>
+              <span className={`value ${buyOpportunity.analystData.upsidePotential > 0 ? 'positive' : 'negative'}`}>
+                {buyOpportunity.analystData.upsidePotential > 0 ? '+' : ''}{buyOpportunity.analystData.upsidePotential}%
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="market-cap">
         <span className="label">Market Cap:</span>
         <span className="value">{formatMarketCap(marketCap)}</span>
@@ -64,6 +101,17 @@ const StockCard = ({ stock, rank, type }) => {
         >
           📊 View Details
         </button>
+        {buyOpportunity && (
+          <button 
+            className="buy-analysis-button"
+            onClick={() => {
+              console.log('Buy Opportunity Analysis for', ticker, buyOpportunity);
+              // Could open a modal or navigate to detailed analysis
+            }}
+          >
+            💎 Buy Analysis
+          </button>
+        )}
       </div>
     </div>
   );

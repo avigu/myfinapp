@@ -2,6 +2,7 @@ const { getTickersCached } = require('./tickers');
 const { getMarketCap } = require('./marketCap');
 const { getHistoricalPrices } = require('./historical');
 const { getRecentEarningsCalendar } = require('./earnings');
+const { analyzeBuyOpportunities } = require('./buyOpportunity');
 const { INDICES } = require('../config/indices');
 const yahooFinance = require('yahoo-finance2').default;
 
@@ -40,12 +41,12 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
     if (!ticker || ticker === 'SP500' || !/^[A-Z.-]{1,6}$/.test(ticker)) continue;
     const earningsDate = new Date(earning.date);
     if (isNaN(earningsDate.getTime())) {
-      console.log(`[WARN] Skipping ${ticker}: invalid earnings date "${earning.date}"`);
+      console.error(`[ERROR] Skipping ${ticker}: invalid earnings date "${earning.date}"`);
       continue;
     }
     const earningsUnix = Math.floor(earningsDate.getTime() / 1000);
     if (!Number.isFinite(earningsUnix)) {
-      console.log(`[WARN] Skipping ${ticker}: invalid earningsUnix "${earningsUnix}"`);
+      console.error(`[ERROR] Skipping ${ticker}: invalid earningsUnix "${earningsUnix}"`);
       continue;
     }
     try {
@@ -56,7 +57,7 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
       const fromUnixForHistory = earningsUnix - daysBack * 86400;
       const toUnixForHistory = earningsUnix;
       if (!Number.isFinite(fromUnixForHistory) || !Number.isFinite(toUnixForHistory)) {
-        console.log(`[WARN] Skipping ${ticker}: invalid from/to unix (${fromUnixForHistory}, ${toUnixForHistory})`);
+        console.error(`[ERROR] Skipping ${ticker}: invalid from/to unix (${fromUnixForHistory}, ${toUnixForHistory})`);
         continue;
       }
       // Pass the per-request cache
@@ -72,7 +73,7 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
         }
       }
       if (priceBeforeEarnings === null) {
-        console.log(`[WARN] No trading day before earnings for ${ticker} (${earning.date})`);
+        console.error(`[ERROR] No trading day before earnings for ${ticker} (${earning.date})`);
         continue;
       }
       const tPrice0 = Date.now();
@@ -92,15 +93,62 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
         change
       });
     } catch (err) {
-      console.log(`${ticker}: Error processing in main logic: ${err.message}`);
+      console.error(`[ERROR] ${ticker}: Error processing in main logic: ${err.message}`);
     }
   }
-  // Log timings and network calls
-  console.log(`[MEASURE] Time to fetch earnings: ${tEarnings1 - tEarnings0}ms, network calls: ${earningsCalls}`);
-  console.log(`[MEASURE] Time to fetch tickers: ${tTickersEnd - tTickersStart}ms, network calls: ${tickerCalls}`);
-  console.log(`[MEASURE] Time to fetch historical prices: ${tHistTotal}ms, network calls: ${historyCalls}`);
-  console.log(`[MEASURE] Time to fetch current prices: ${tPriceTotal}ms, network calls: ${currentPriceCalls}`);
+  
+  // Summary statistics
+  console.log(`[SUMMARY] Analysis completed: ${results.length} opportunities found`);
+  console.log(`[NETWORK] Earnings API: ${earningsCalls} calls, ${tEarnings1 - tEarnings0}ms`);
+  console.log(`[NETWORK] Tickers API: ${tickerCalls} calls, ${tTickersEnd - tTickersStart}ms`);
+  console.log(`[NETWORK] Historical API: ${historyCalls} calls, ${tHistTotal}ms`);
+  console.log(`[NETWORK] Current Price API: ${currentPriceCalls} calls, ${tPriceTotal}ms`);
+  
   return results.sort((a, b) => b.change - a.change);
+}
+
+// Enhanced function that includes buy opportunity analysis
+async function getInvestmentOpportunitiesWithBuyAnalysis(indexKey, now = new Date()) {
+  const startTime = Date.now();
+  
+  // Get basic opportunities first
+  const opportunities = await getInvestmentOpportunities(indexKey, now);
+  const basicTime = Date.now() - startTime;
+  
+  if (opportunities.length > 0) {
+    const gainers = opportunities.filter(stock => stock.change > 0);
+    const losers = opportunities.filter(stock => stock.change < 0);
+    const bigDrops = opportunities.filter(stock => stock.change < -7);
+    
+    console.log(`[SUMMARY] Breakdown: ${gainers.length} gainers, ${losers.length} losers, ${bigDrops.length} big drops (>7%)`);
+  }
+  
+  // Analyze buy opportunities for stocks that dropped more than 7%
+  const buyAnalysisStartTime = Date.now();
+  const buyOpportunities = await analyzeBuyOpportunities(opportunities);
+  const buyAnalysisTime = Date.now() - buyAnalysisStartTime;
+  
+  const totalTime = Date.now() - startTime;
+  console.log(`[SUMMARY] Enhanced analysis: ${opportunities.length} total, ${buyOpportunities.length} buy opportunities in ${(totalTime / 1000).toFixed(1)}s`);
+  
+  return {
+    opportunities,
+    buyOpportunities,
+    metadata: {
+      totalOpportunities: opportunities.length,
+      totalBuyOpportunities: buyOpportunities.length,
+      analysisTime: {
+        basic: basicTime,
+        buyAnalysis: buyAnalysisTime,
+        total: totalTime
+      },
+      breakdown: {
+        gainers: opportunities.filter(stock => stock.change > 0).length,
+        losers: opportunities.filter(stock => stock.change < 0).length,
+        bigDrops: opportunities.filter(stock => stock.change < -7).length
+      }
+    }
+  };
 }
 
 // Upcoming relevant earnings logic
@@ -126,7 +174,7 @@ async function getUpcomingRelevantEarnings(indexKey) {
         marketCap
       });
     } catch (err) {
-      console.log(`Error processing upcoming earnings for ${earning.symbol}: ${err.message}`);
+      console.error(`[ERROR] Error processing upcoming earnings for ${earning.symbol}: ${err.message}`);
     }
   }
   return relevant.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -134,5 +182,6 @@ async function getUpcomingRelevantEarnings(indexKey) {
 
 module.exports = {
   getInvestmentOpportunities,
+  getInvestmentOpportunitiesWithBuyAnalysis,
   getUpcomingRelevantEarnings,
 }; 
