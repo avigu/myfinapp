@@ -41,12 +41,15 @@ A modern financial platform that highlights S&P 500 & NASDAQ investment opportun
    FINNHUB_API_KEY=your_finnhub_api_key
    OPENAI_API_KEY=your_openai_api_key_here
    GCS_BUCKET=your_gcs_bucket_name_optional
+   # Optional: Yahoo consent cookie to avoid redirect issues
+   YAHOO_COOKIE=your_yahoo_cookie
    ```
-   Note: 
-   - The Finnhub API key is optional (a default is provided)
-   - The OpenAI API key is required for AI analysis features
-   - The GCS_BUCKET is optional for caching. If not provided, caching will be disabled and the app will work without Google Cloud Storage
+   Note:
+    - The Finnhub API key is optional (a default is provided)
+    - The OpenAI API key is required for AI analysis features
+    - The GCS_BUCKET is optional for caching. If not provided, caching will be disabled and the app will work without Google Cloud Storage
    - If using Google Cloud Storage, place your service account key file as `gcs-key.json` in the project root
+   - Set `YAHOO_COOKIE` if you see `Unexpected redirect` errors from Yahoo Finance (e.g. redirects to `?guccounter=1`)
 5. Start the server:
    ```sh
    npm start

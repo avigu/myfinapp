@@ -1,5 +1,22 @@
 // services/marketCap.js
 const yahooFinance = require('yahoo-finance2').default;
+
+// Optional consent cookie to bypass region redirect
+const YAHOO_COOKIE = process.env.YAHOO_COOKIE;
+if (YAHOO_COOKIE) {
+  try {
+    yahooFinance.setGlobalConfig({
+      cookie: YAHOO_COOKIE,
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept-Language': 'en-US,en;q=0.9'
+      }
+    });
+    console.log('[CONFIG] Yahoo Finance cookie configured');
+  } catch (err) {
+    console.warn('[WARN] Failed to set Yahoo Finance cookie:', err.message);
+  }
+}
 const { readCache, writeCache } = require('../utils/cache');
 
 const MARKETCAP_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day
