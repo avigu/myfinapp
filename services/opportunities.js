@@ -6,6 +6,11 @@ const { analyzeBuyOpportunities } = require('./buyOpportunity');
 const { INDICES } = require('../config/indices');
 const yahooFinance = require('yahoo-finance2').default;
 
+// Utility to add delay between API calls to avoid rate limiting
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Main investment opportunities logic
 async function getInvestmentOpportunities(indexKey, now = new Date()) {
   const index = INDICES[indexKey];
@@ -51,8 +56,19 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
     }
     try {
       const tHist0 = Date.now();
-      const marketCap = await getMarketCap(ticker);
+      
+      // Single Yahoo Finance call to get both market cap and current price
+      const tPrice0 = Date.now();
+      const liveQuote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] }); currentPriceCalls++;
+      const tPrice1 = Date.now();
+      tPriceTotal += (tPrice1 - tPrice0);
+      
+      const marketCap = liveQuote.price.marketCap;
+      const priceNow = liveQuote.price.regularMarketPrice;
+      
       if (!marketCap || marketCap < index.minMarketCap) continue;
+      if (!priceNow) continue;
+      
       const daysBack = 7;
       const fromUnixForHistory = earningsUnix - daysBack * 86400;
       const toUnixForHistory = earningsUnix;
@@ -76,12 +92,7 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
         console.error(`[ERROR] No trading day before earnings for ${ticker} (${earning.date})`);
         continue;
       }
-      const tPrice0 = Date.now();
-      const liveQuote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] }); currentPriceCalls++;
-      const tPrice1 = Date.now();
-      tPriceTotal += (tPrice1 - tPrice0);
-      const priceNow = liveQuote.price.regularMarketPrice;
-      if (!priceNow) continue;
+      
       const change = ((priceNow - priceBeforeEarnings) / priceBeforeEarnings) * 100;
       results.push({
         ticker,
@@ -92,6 +103,9 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
         priceNow,
         change
       });
+      
+      // Add small delay to avoid rate limiting
+      await delay(100);
     } catch (err) {
       console.error(`[ERROR] ${ticker}: Error processing in main logic: ${err.message}`);
     }
@@ -165,7 +179,9 @@ async function getUpcomingRelevantEarnings(indexKey) {
   for (const earning of earningsArray) {
     if (!earning || !earning.symbol || !tickerSet.has(earning.symbol)) continue;
     try {
-      const marketCap = await getMarketCap(earning.symbol);
+      // Use direct Yahoo Finance call instead of getMarketCap to avoid double calls
+      const quote = await yahooFinance.quoteSummary(earning.symbol, { modules: ['price'] });
+      const marketCap = quote.price.marketCap;
       if (!marketCap || marketCap < index.minMarketCap) continue;
       relevant.push({
         ticker: earning.symbol,
@@ -173,6 +189,9 @@ async function getUpcomingRelevantEarnings(indexKey) {
         date: earning.date,
         marketCap
       });
+      
+      // Add small delay to avoid rate limiting
+      await delay(100);
     } catch (err) {
       console.error(`[ERROR] Error processing upcoming earnings for ${earning.symbol}: ${err.message}`);
     }
