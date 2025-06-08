@@ -1,7 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 const cheerio = require('cheerio');
-const yahooFinance = require('yahoo-finance2').default;
+const yahooFinance = require('./config/yahooFinanceConfig');
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gfql9r01qhao4tdc70';
 

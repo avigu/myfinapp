@@ -1,5 +1,5 @@
 // services/marketCap.js
-const yahooFinance = require('yahoo-finance2').default;
+const yahooFinance = require('../config/yahooFinanceConfig');
 const { readCache, writeCache } = require('../utils/cache');
 
 const MARKETCAP_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day

@@ -4,7 +4,7 @@ const { getHistoricalPrices } = require('./historical');
 const { getRecentEarningsCalendar } = require('./earnings');
 const { analyzeBuyOpportunities } = require('./buyOpportunity');
 const { INDICES } = require('../config/indices');
-const yahooFinance = require('yahoo-finance2').default;
+const yahooFinance = require('../config/yahooFinanceConfig');
 
 // Utility to add delay between API calls to avoid rate limiting
 function delay(ms) {

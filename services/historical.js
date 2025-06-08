@@ -1,5 +1,5 @@
 // services/historical.js
-const yahooFinance = require('yahoo-finance2').default;
+const yahooFinance = require('../config/yahooFinanceConfig');
 const { loadCacheFile, saveCacheFile } = require('../utils/cache');
 
 const HISTORICAL_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day
