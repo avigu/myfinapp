@@ -1,5 +1,5 @@
 // services/marketCap.js
-const fmp = require('../config/fmpConfig');
+const dataProvider = require('../config/dataProvider');
 const { readCache, writeCache } = require('../utils/cache');
 
 const MARKETCAP_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day
@@ -37,15 +37,15 @@ async function getMarketCap(ticker) {
   }
   
   try {
-    const quote = await fmp.quote(ticker);
-    const cap = quote ? quote.marketCap || null : null;
+    // Use the unified data provider to get market cap
+    const cap = await dataProvider.getMarketCap(ticker);
 
     marketCapCache[ticker] = { value: cap, timestamp: now };
     await saveMarketCapCache();
 
     return cap;
   } catch (err) {
-    console.error(`[ERROR] ${ticker}: Error fetching market cap from FMP: ${err.message}`);
+    console.error(`[ERROR] ${ticker}: Error fetching market cap: ${err.message}`);
     return null;
   }
 }

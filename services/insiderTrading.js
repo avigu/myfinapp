@@ -1,7 +1,5 @@
-const axios = require('axios');
+const dataProvider = require('../config/dataProvider');
 const moment = require('moment');
-
-const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gfql9r01qhao4tdc70';
 
 async function getInsiderTransactions(ticker) {
   console.log(`[INSIDER] 🔍 Fetching insider transactions for ${ticker}...`);
@@ -13,25 +11,24 @@ async function getInsiderTransactions(ticker) {
     
     console.log(`[INSIDER] ${ticker} - Date range: ${fromDate} to ${toDate}`);
     
-    const url = `https://finnhub.io/api/v1/stock/insider-transactions?symbol=${ticker}&from=${fromDate}&to=${toDate}&token=${FINNHUB_API_KEY}`;
-    console.log(`[INSIDER] ${ticker} - Fetching from Finnhub...`);
+    console.log(`[INSIDER] ${ticker} - Fetching from data provider...`);
     
-    const response = await axios.get(url);
+    // Use the unified data provider to get insider transactions
+    const response = await dataProvider.getInsiderTransactions(ticker, fromDate, toDate);
     
-    if (!response.data || !response.data.data) {
+    if (!response || !response.data) {
       console.log(`[INSIDER] ${ticker} - No data returned from API`);
       return { totalBuys: 0, totalSells: 0, buyValue: 0, sellValue: 0, signal: '⚪', transactions: [], hasValidPrices: false };
     }
     
-    const transactions = response.data.data;
+    const transactions = response.data;
     console.log(`[INSIDER] ${ticker} - Found ${transactions.length} transactions`);
     
     // Get current stock price as fallback for missing prices
     let currentPrice = null;
     try {
-      const priceUrl = `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_API_KEY}`;
-      const priceResponse = await axios.get(priceUrl);
-      currentPrice = priceResponse.data?.c || null;
+      const quote = await dataProvider.quote(ticker);
+      currentPrice = quote?.price || null;
       console.log(`[INSIDER] ${ticker} - Current stock price: $${currentPrice}`);
     } catch (error) {
       console.log(`[INSIDER] ${ticker} - Could not fetch current price: ${error.message}`);

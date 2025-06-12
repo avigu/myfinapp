@@ -1,5 +1,5 @@
 // services/historical.js
-const fmp = require('../config/fmpConfig');
+const dataProvider = require('../config/dataProvider');
 const { loadCacheFile, saveCacheFile } = require('../utils/cache');
 
 const HISTORICAL_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day
@@ -39,7 +39,8 @@ async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFi
     const fromDate = new Date(from * 1000).toISOString().slice(0, 10);
     const toDate = new Date(to * 1000).toISOString().slice(0, 10);
     
-    const history = await fmp.historical(ticker, fromDate, toDate);
+    // Use the unified data provider to get historical data
+    const history = await dataProvider.historical(ticker, fromDate, toDate);
     
     const result = { 
       s: history.length > 1 ? 'ok' : 'no_data', 
@@ -52,7 +53,7 @@ async function getHistoricalPrices(indexKey, ticker, from, to, historicalCacheFi
     
     return result;
   } catch (err) {
-    console.error(`[ERROR] ${ticker}: Error fetching historical prices from FMP: ${err.message}`);
+    console.error(`[ERROR] ${ticker}: Error fetching historical prices: ${err.message}`);
     return { s: 'error', c: [], t: [] };
   }
 }

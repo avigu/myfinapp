@@ -38,12 +38,14 @@ A modern financial platform that highlights S&P 500 & NASDAQ investment opportun
    ```
 4. Create a `.env` file with your API keys:
    ```env
+   ALPHA_VANTAGE_API_KEY=your_alpha_vantage_api_key
    FINNHUB_API_KEY=your_finnhub_api_key
    OPENAI_API_KEY=your_openai_api_key_here
    GCS_BUCKET=your_gcs_bucket_name_optional
    ```
    Note: 
-   - The Finnhub API key is optional (a default is provided)
+   - The Alpha Vantage API key is required for price data, fundamentals, and market cap
+   - The Finnhub API key is used for earnings calendar and insider trading data
    - The OpenAI API key is required for AI analysis features
    - The GCS_BUCKET is optional for caching. If not provided, caching will be disabled and the app will work without Google Cloud Storage
    - If using Google Cloud Storage, place your service account key file as `gcs-key.json` in the project root
@@ -143,7 +145,7 @@ myfinapp/
 - **Mobile Frontend**: React Native with Expo
 - **Build**: Webpack, Babel
 - **Styling**: Modern CSS with CSS Variables, React Native StyleSheet
- - **Data Sources**: Financial Modeling Prep, Finnhub API
+- **Data Sources**: Alpha Vantage API (price data, fundamentals), Finnhub API (earnings calendar, insider trades)
 - **AI Analysis**: OpenAI GPT-3.5-turbo
 - **Caching**: Google Cloud Storage
 

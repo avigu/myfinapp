@@ -1,8 +1,7 @@
 // services/earnings.js
-const axios = require('axios');
+const dataProvider = require('../config/dataProvider');
 const { readCache, writeCache } = require('../utils/cache');
 
-const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gfql9r01qhao4tdc70';
 const EARNINGS_CACHE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 // In-memory cache to avoid repeated storage calls within the same request/session
@@ -29,11 +28,9 @@ async function getRecentEarningsCalendar(from, to) {
     return cache;
   }
   
-  const url = `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_API_KEY}`;
-  
   try {
-    const response = await axios.get(url);
-    const data = response.data;
+    // Use the unified data provider to get earnings calendar
+    const data = await dataProvider.getEarningsCalendar(from, to);
     
     // Store in both persistent and memory cache
     await writeCache(cacheKey, data);
@@ -44,7 +41,7 @@ async function getRecentEarningsCalendar(from, to) {
     
     return data;
   } catch (error) {
-    console.error('[ERROR] Error fetching Finnhub earnings calendar:', error.message);
+    console.error('[ERROR] Error fetching earnings calendar:', error.message);
     return { earningsCalendar: [] }; // Return a default structure in case of error
   }
 }

@@ -1,69 +1,62 @@
-const axios = require('axios');
-
-const FMP_API_KEY = process.env.FMP_API_KEY || 'demo';
+const dataProvider = require('../config/dataProvider');
+const alphaVantage = require('../config/alphaVantageConfig');
 
 async function getAnalystSentiment(ticker) {
   try {
-    // Get analyst recommendations
-    const recommendationsUrl = `https://financialmodelingprep.com/api/v3/analyst-stock-recommendations/${ticker}?apikey=${FMP_API_KEY}`;
-    const recommendationsResponse = await axios.get(recommendationsUrl);
+    // Alpha Vantage doesn't provide detailed analyst ratings
+    // We'll use a simplified approach based on available data
+    console.log(`[ANALYST] Getting analyst sentiment for ${ticker}...`);
     
-    // Get price targets
-    const priceTargetUrl = `https://financialmodelingprep.com/api/v3/price-target/${ticker}?apikey=${FMP_API_KEY}`;
-    const priceTargetResponse = await axios.get(priceTargetUrl);
+    // Get company overview which includes some analyst data
+    const overview = await alphaVantage.getCompanyOverview(ticker);
     
-    // Get current stock price
-    const quoteUrl = `https://financialmodelingprep.com/api/v3/quote/${ticker}?apikey=${FMP_API_KEY}`;
-    const quoteResponse = await axios.get(quoteUrl);
+    // Get current price data
+    const quote = await dataProvider.quote(ticker);
+    const currentPrice = quote ? quote.price : null;
     
     let ratings = { buy: 0, hold: 0, sell: 0 };
     let averagePriceTarget = null;
-    let currentPrice = null;
     let sentiment = '🟡'; // Default to mixed
     
-    // Process recommendations
-    if (recommendationsResponse.data && recommendationsResponse.data.length > 0) {
-      // Get the most recent recommendation summary
-      const recentRecommendations = recommendationsResponse.data.slice(0, 10); // Last 10 recommendations
-      
-      recentRecommendations.forEach(rec => {
-        const grade = rec.analystRatingsbuy || rec.analystRatingsHold || rec.analystRatingsSell;
-        if (rec.analystRatingsbuy) ratings.buy += rec.analystRatingsbuy;
-        if (rec.analystRatingsHold) ratings.hold += rec.analystRatingsHold;
-        if (rec.analystRatingsSell) ratings.sell += rec.analystRatingsSell;
-      });
-    }
-    
-    // Process price targets
-    if (priceTargetResponse.data && priceTargetResponse.data.length > 0) {
-      const validTargets = priceTargetResponse.data
-        .slice(0, 20) // Recent 20 price targets
-        .map(pt => pt.priceTarget)
-        .filter(target => target && target > 0);
-      
-      if (validTargets.length > 0) {
-        averagePriceTarget = validTargets.reduce((sum, target) => sum + target, 0) / validTargets.length;
-        averagePriceTarget = Math.round(averagePriceTarget * 100) / 100;
+    if (overview) {
+      // Extract analyst target price if available
+      if (overview.AnalystTargetPrice) {
+        averagePriceTarget = parseFloat(overview.AnalystTargetPrice);
+        console.log(`[ANALYST] ${ticker} - Analyst target price: $${averagePriceTarget}`);
       }
-    }
-    
-    // Get current price
-    if (quoteResponse.data && quoteResponse.data.length > 0) {
-      currentPrice = quoteResponse.data[0].price;
-    }
-    
-    // Determine sentiment
-    const totalRatings = ratings.buy + ratings.hold + ratings.sell;
-    if (totalRatings > 0) {
-      const buyPercentage = ratings.buy / totalRatings;
-      const sellPercentage = ratings.sell / totalRatings;
       
-      if (buyPercentage > 0.6) {
-        sentiment = '🟢'; // Bullish
-      } else if (sellPercentage > 0.4) {
-        sentiment = '🔴'; // Bearish
-      } else {
-        sentiment = '🟡'; // Mixed
+      // Use recommendation trends if available (not directly available in Alpha Vantage)
+      // We'll estimate based on price target vs current price
+      if (averagePriceTarget && currentPrice) {
+        const upside = ((averagePriceTarget - currentPrice) / currentPrice) * 100;
+        console.log(`[ANALYST] ${ticker} - Estimated upside: ${upside.toFixed(2)}%`);
+        
+        // Estimate ratings based on upside potential
+        if (upside > 15) {
+          // Strong buy signal if upside is significant
+          ratings.buy = 3;
+          ratings.hold = 1;
+          ratings.sell = 0;
+          sentiment = '🟢';
+        } else if (upside > 5) {
+          // Moderate buy
+          ratings.buy = 2;
+          ratings.hold = 2;
+          ratings.sell = 0;
+          sentiment = '🟢';
+        } else if (upside > -5) {
+          // Hold
+          ratings.buy = 1;
+          ratings.hold = 3;
+          ratings.sell = 0;
+          sentiment = '🟡';
+        } else {
+          // Sell
+          ratings.buy = 0;
+          ratings.hold = 2;
+          ratings.sell = 2;
+          sentiment = '🔴';
+        }
       }
     }
     
@@ -84,7 +77,7 @@ async function getAnalystSentiment(ticker) {
     };
     
   } catch (error) {
-    console.error(`Error fetching analyst sentiment for ${ticker}:`, error.message);
+    console.error(`[ANALYST] Error fetching analyst sentiment for ${ticker}:`, error.message);
     return {
       ratings: { buy: 0, hold: 0, sell: 0 },
       averagePriceTarget: null,

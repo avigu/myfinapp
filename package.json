@@ -5,6 +5,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:fmp": "node test-fmp.js",
+    "test:data-provider": "node test-data-provider.js",
     "start": "node server.js",
     "start:local": "export GOOGLE_APPLICATION_CREDENTIALS=\"./gcs-key.json\" && node server.js",
     "build": "webpack --mode production",
