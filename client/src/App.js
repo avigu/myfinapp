@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import UnifiedStockCard from './components/UnifiedStockCard';
-import BuyOpportunityCard from './components/BuyOpportunityCard';
 import IndexSelector from './components/IndexSelector';
 import DateSelector from './components/DateSelector';
 import EarningsCalendar from './components/EarningsCalendar';
@@ -14,20 +13,15 @@ const App = () => {
   const [selectedIndex, setSelectedIndex] = useState('sp500');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
   const [activeTab, setActiveTab] = useState('gainers');
-  const [buyOpportunitiesLoading, setBuyOpportunitiesLoading] = useState(false);
 
-  const fetchData = async (includeBuyAnalysis = false) => {
+  const fetchData = async () => {
     setLoading(true);
     setError(null);
-    if (includeBuyAnalysis) {
-      setBuyOpportunitiesLoading(true);
-    }
     
     try {
       const url = selectedIndex === 'nasdaq' ? '/nasdaq' : '/';
       const params = new URLSearchParams({ 
-        start: selectedDate,
-        buyAnalysis: includeBuyAnalysis.toString()
+        start: selectedDate
       });
       const response = await fetch(`${url}?${params}`, {
         headers: { 'Accept': 'application/json' }
@@ -43,27 +37,19 @@ const App = () => {
       setError(err.message);
     } finally {
       setLoading(false);
-      setBuyOpportunitiesLoading(false);
     }
   };
 
   useEffect(() => {
-    // Only fetch buy analysis if the buy opportunities tab is active
-    const includeBuyAnalysis = activeTab === 'buyOpportunities';
-    fetchData(includeBuyAnalysis);
-  }, [selectedIndex, selectedDate, activeTab]);
+    fetchData();
+  }, [selectedIndex, selectedDate]);
 
   const handleRefresh = () => {
-    const includeBuyAnalysis = activeTab === 'buyOpportunities';
-    fetchData(includeBuyAnalysis);
+    fetchData();
   };
 
   const handleTabChange = (newTab) => {
     setActiveTab(newTab);
-    // If switching to buy opportunities and we don't have the data yet, fetch it
-    if (newTab === 'buyOpportunities' && (!data?.buyOpportunities || data.buyOpportunities.length === 0)) {
-      fetchData(true);
-    }
   };
 
   if (loading) return <LoadingSpinner />;
@@ -79,13 +65,7 @@ const App = () => {
     </div>
   );
 
-  const { topGainers = [], topLosers = [], opportunities = [], buyOpportunities = [], upcomingEarnings = [] } = data || {};
-
-  // Create a mapping of buy opportunities by ticker for easy lookup
-  const buyOpportunityMap = buyOpportunities.reduce((map, opportunity) => {
-    map[opportunity.ticker] = opportunity;
-    return map;
-  }, {});
+  const { topGainers = [], topLosers = [], opportunities = [], upcomingEarnings = [] } = data || {};
 
   return (
     <div className="app">
@@ -127,12 +107,6 @@ const App = () => {
             📉 Top Losers ({topLosers.length})
           </button>
           <button 
-            className={`tab ${activeTab === 'buyOpportunities' ? 'active' : ''}`}
-            onClick={() => handleTabChange('buyOpportunities')}
-          >
-            💎 Buy Opportunities ({buyOpportunities.length})
-          </button>
-          <button 
             className={`tab ${activeTab === 'earnings' ? 'active' : ''}`}
             onClick={() => handleTabChange('earnings')}
           >
@@ -153,7 +127,6 @@ const App = () => {
                 <UnifiedStockCard 
                   key={stock.ticker} 
                   stock={stock} 
-                  opportunity={buyOpportunityMap[stock.ticker]}
                   rank={index + 1} 
                   type="gainer" 
                 />
@@ -167,46 +140,10 @@ const App = () => {
                 <UnifiedStockCard 
                   key={stock.ticker} 
                   stock={stock} 
-                  opportunity={buyOpportunityMap[stock.ticker]}
                   rank={index + 1} 
                   type="loser" 
                 />
               ))}
-            </div>
-          )}
-
-          {activeTab === 'buyOpportunities' && (
-            <div className="buy-opportunities-section">
-              {buyOpportunitiesLoading ? (
-                <div className="loading-section">
-                  <LoadingSpinner />
-                  <p>Analyzing buy opportunities... This may take a moment.</p>
-                </div>
-              ) : buyOpportunities.length > 0 ? (
-                <>
-                  <div className="section-header">
-                    <h2>💎 Buy Opportunities Analysis</h2>
-                    <p>Stocks that dropped &gt;7% after earnings with additional buy signals</p>
-                  </div>
-                  <div className="buy-opportunities-grid">
-                    {buyOpportunities.map((opportunity, index) => (
-                      <BuyOpportunityCard 
-                        key={opportunity.ticker} 
-                        opportunity={opportunity} 
-                        rank={index + 1} 
-                      />
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="no-opportunities">
-                  <h3>🔍 No Buy Opportunities Found</h3>
-                  <p>No stocks dropped more than 7% after earnings in the selected timeframe, or none met the buy criteria.</p>
-                  <button onClick={() => fetchData(true)} className="analyze-button">
-                    🔄 Re-analyze
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
@@ -220,7 +157,6 @@ const App = () => {
                 <UnifiedStockCard 
                   key={stock.ticker} 
                   stock={stock} 
-                  opportunity={buyOpportunityMap[stock.ticker]}
                   rank={index + 1} 
                   type={stock.change >= 0 ? 'gainer' : 'loser'} 
                 />
@@ -232,7 +168,7 @@ const App = () => {
 
       <footer className="footer">
         <p>
-          Data powered by Financial Modeling Prep & Finnhub •
+          Data powered by Alpha Vantage & Finnhub •
           Updated: {new Date().toLocaleString()} • 
           <a href="/" target="_blank" rel="noopener noreferrer">
             View Classic UI
