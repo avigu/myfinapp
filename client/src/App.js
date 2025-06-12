@@ -232,7 +232,7 @@ const App = () => {
 
       <footer className="footer">
         <p>
-          Data powered by Yahoo Finance, Finnhub & Financial Modeling Prep • 
+          Data powered by Financial Modeling Prep & Finnhub •
           Updated: {new Date().toLocaleString()} • 
           <a href="/" target="_blank" rel="noopener noreferrer">
             View Classic UI

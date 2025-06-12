@@ -1,7 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 const cheerio = require('cheerio');
-const yahooFinance = require('./config/yahooFinanceConfig');
+const fmp = require('./config/fmpConfig');
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'd0gfql9r01qhao4tdc6gd0gfql9r01qhao4tdc70';
 
@@ -38,12 +38,12 @@ async function getSP500Tickers() {
 }
 
 async function getMarketCap(ticker) {
-  // Use Yahoo Finance for market cap
+  // Use FMP for market cap
   try {
-    const quote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] });
-    return quote.price.marketCap || null;
+    const quote = await fmp.quote(ticker);
+    return quote ? quote.marketCap || null : null;
   } catch (err) {
-    console.log(`${ticker}: Error fetching market cap from Yahoo Finance`, err.message);
+    console.log(`${ticker}: Error fetching market cap from FMP`, err.message);
     return null;
   }
 }
@@ -55,16 +55,12 @@ async function getEarnings(ticker) {
 }
 
 async function getHistoricalPrices(ticker, from, to) {
-  // Use Yahoo Finance for historical prices
+  // Use FMP for historical prices
   try {
     // Convert UNIX timestamps (seconds) to YYYY-MM-DD
     const fromDate = new Date(from * 1000).toISOString().slice(0, 10);
     const toDate = new Date(to * 1000).toISOString().slice(0, 10);
-    const history = await yahooFinance.historical(ticker, {
-      period1: fromDate,
-      period2: toDate,
-      interval: '1d',
-    });
+    const history = await fmp.historical(ticker, fromDate, toDate);
     // Return in Finnhub-like format for compatibility
     return {
       s: history.length > 1 ? 'ok' : 'no_data',
@@ -72,7 +68,7 @@ async function getHistoricalPrices(ticker, from, to) {
       t: history.map(day => Math.floor(new Date(day.date).getTime() / 1000)),
     };
   } catch (err) {
-    console.log(`${ticker}: Error fetching historical prices from Yahoo Finance`, err.message);
+    console.log(`${ticker}: Error fetching historical prices from FMP`, err.message);
     return { s: 'error', c: [], t: [] };
   }
 }
