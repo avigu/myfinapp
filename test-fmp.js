@@ -1,8 +1,8 @@
-// Test script to verify Yahoo Finance configuration
-const yahooFinance = require('./config/yahooFinanceConfig');
+// Test script to verify Financial Modeling Prep configuration
+const fmp = require('./config/fmpConfig');
 
-async function testYahooFinance() {
-  console.log('Testing Yahoo Finance configuration with consent redirect handling...\n');
+async function testFMP() {
+  console.log('Testing FMP configuration...\n');
   
   const testTickers = ['AAPL', 'MSFT', 'GOOGL'];
   const results = {
@@ -15,11 +15,11 @@ async function testYahooFinance() {
     console.log(`Testing ticker: ${ticker}`);
     
     try {
-      // Test quoteSummary (used in marketCap and opportunities services)
-      console.log(`  - Testing quoteSummary for ${ticker}...`);
-      const quote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] });
-      const marketCap = quote.price.marketCap;
-      const currentPrice = quote.price.regularMarketPrice;
+      // Test quote endpoint
+      console.log(`  - Testing quote for ${ticker}...`);
+      const quote = await fmp.quote(ticker);
+      const marketCap = quote ? quote.marketCap : null;
+      const currentPrice = quote ? quote.price : null;
       
       console.log(`  ✅ Success: ${ticker} - Market Cap: ${marketCap ? `$${(marketCap / 1e9).toFixed(1)}B` : 'N/A'}, Price: $${currentPrice}`);
       results.successes++;
@@ -40,11 +40,7 @@ async function testYahooFinance() {
     const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const toDate = new Date().toISOString().slice(0, 10);
     
-    const history = await yahooFinance.historical('AAPL', {
-      period1: fromDate,
-      period2: toDate,
-      interval: '1d'
-    });
+    const history = await fmp.historical('AAPL', fromDate, toDate);
     
     console.log(`  ✅ Historical data success: Retrieved ${history.length} days of data for AAPL`);
     results.successes++;
@@ -74,7 +70,7 @@ async function testYahooFinance() {
   console.log(`\nSuccess rate: ${successRate}%`);
   
   if (results.failures === 0) {
-    console.log('\n🎉 All tests passed! Yahoo Finance configuration is working properly.');
+    console.log('\n🎉 All tests passed! FMP configuration is working properly.');
   } else if (successRate >= 50) {
     console.log('\n⚠️  Some tests failed, but configuration appears to be working partially.');
     console.log('   This may be acceptable if errors are intermittent consent redirects.');
@@ -92,7 +88,7 @@ process.on('unhandledRejection', (error) => {
 });
 
 // Run the test
-testYahooFinance().catch(error => {
+testFMP().catch(error => {
   console.error('Test script error:', error);
   process.exit(1);
 }); 

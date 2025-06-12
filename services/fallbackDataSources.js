@@ -1,4 +1,4 @@
-// Fallback data sources for when Yahoo Finance fails
+// Fallback data sources for when FMP data fails
 const axios = require('axios');
 
 // Alternative data sources
