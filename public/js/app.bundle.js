@@ -209,11 +209,6 @@ var App = function App() {
       return handleTabChange('losers');
     }
   }, "\uD83D\uDCC9 Top Losers (", topLosers.length, ")"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("button", {
-    className: "tab ".concat(activeTab === 'buyOpportunities' ? 'active' : ''),
-    onClick: function onClick() {
-      return handleTabChange('buyOpportunities');
-    }
-  }, "\uD83D\uDC8E Buy Opportunities (", buyOpportunities.length, ")"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("button", {
     className: "tab ".concat(activeTab === 'earnings' ? 'active' : ''),
     onClick: function onClick() {
       return handleTabChange('earnings');
