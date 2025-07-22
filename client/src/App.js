@@ -126,12 +126,7 @@ const App = () => {
           >
             📉 Top Losers ({topLosers.length})
           </button>
-          <button 
-            className={`tab ${activeTab === 'buyOpportunities' ? 'active' : ''}`}
-            onClick={() => handleTabChange('buyOpportunities')}
-          >
-            💎 Buy Opportunities ({buyOpportunities.length})
-          </button>
+
           <button 
             className={`tab ${activeTab === 'earnings' ? 'active' : ''}`}
             onClick={() => handleTabChange('earnings')}
@@ -243,4 +238,4 @@ const App = () => {
   );
 };
 
-export default App; 
+export default App;

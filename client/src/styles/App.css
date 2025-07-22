@@ -230,6 +230,9 @@ body {
 /* Tabs */
 .tabs {
   display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
   gap: 0.5rem;
   margin-bottom: 2rem;
   background: rgba(255, 255, 255, 0.9);
@@ -1695,4 +1698,4 @@ body {
   .unified-stock-card .ai-reason p {
     font-size: 0.9rem;
   }
-} 
+}
