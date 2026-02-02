@@ -334,13 +334,13 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
         </button>
         
         {/* External link button - clearly different design */}
-        <a
+        <a 
           className="external-link-button"
-          href={`https://site.financialmodelingprep.com/financial-summary/${ticker}`}
+          href={`https://finance.yahoo.com/quote/${ticker}`}
           target="_blank"
           rel="noopener noreferrer"
         >
-          📈 FMP ↗
+          📈 Yahoo Finance ↗
         </a>
       </div>
 

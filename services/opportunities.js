@@ -4,7 +4,7 @@ const { getHistoricalPrices } = require('./historical');
 const { getRecentEarningsCalendar } = require('./earnings');
 const { analyzeBuyOpportunities } = require('./buyOpportunity');
 const { INDICES } = require('../config/indices');
-const fmp = require('../config/fmpConfig');
+const yahooFinance = require('../config/yahooFinanceConfig');
 
 // Utility to add delay between API calls to avoid rate limiting
 function delay(ms) {
@@ -57,14 +57,14 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
     try {
       const tHist0 = Date.now();
       
-      // Single FMP call to get both market cap and current price
+      // Single Yahoo Finance call to get both market cap and current price
       const tPrice0 = Date.now();
-      const liveQuote = await fmp.quote(ticker); currentPriceCalls++;
+      const liveQuote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] }); currentPriceCalls++;
       const tPrice1 = Date.now();
       tPriceTotal += (tPrice1 - tPrice0);
-
-      const marketCap = liveQuote ? liveQuote.marketCap : null;
-      const priceNow = liveQuote ? liveQuote.price : null;
+      
+      const marketCap = liveQuote.price.marketCap;
+      const priceNow = liveQuote.price.regularMarketPrice;
       
       if (!marketCap || marketCap < index.minMarketCap) continue;
       if (!priceNow) continue;
@@ -179,9 +179,9 @@ async function getUpcomingRelevantEarnings(indexKey) {
   for (const earning of earningsArray) {
     if (!earning || !earning.symbol || !tickerSet.has(earning.symbol)) continue;
     try {
-      // Use direct FMP call instead of getMarketCap to avoid double calls
-      const quote = await fmp.quote(earning.symbol);
-      const marketCap = quote ? quote.marketCap : null;
+      // Use direct Yahoo Finance call instead of getMarketCap to avoid double calls
+      const quote = await yahooFinance.quoteSummary(earning.symbol, { modules: ['price'] });
+      const marketCap = quote.price.marketCap;
       if (!marketCap || marketCap < index.minMarketCap) continue;
       relevant.push({
         ticker: earning.symbol,

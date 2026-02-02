@@ -1,5 +1,5 @@
 // services/marketCap.js
-const fmp = require('../config/fmpConfig');
+const yahooFinance = require('../config/yahooFinanceConfig');
 const { readCache, writeCache } = require('../utils/cache');
 
 const MARKETCAP_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day
@@ -36,18 +36,40 @@ async function getMarketCap(ticker) {
     return entry.value;
   }
   
-  try {
-    const quote = await fmp.quote(ticker);
-    const cap = quote ? quote.marketCap || null : null;
-
-    marketCapCache[ticker] = { value: cap, timestamp: now };
-    await saveMarketCapCache();
-
-    return cap;
-  } catch (err) {
-    console.error(`[ERROR] ${ticker}: Error fetching market cap from FMP: ${err.message}`);
-    return null;
+  // Retry logic for rate limiting issues
+  let retryCount = 0;
+  const maxRetries = 2;
+  
+  while (retryCount <= maxRetries) {
+    try {
+      // Add delay for retries to avoid rate limiting
+      if (retryCount > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      }
+      
+      const quote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] });
+      const cap = quote.price.marketCap || null;
+      
+      marketCapCache[ticker] = { value: cap, timestamp: now };
+      await saveMarketCapCache();
+      
+      return cap;
+    } catch (err) {
+      // Check for redirect errors (rate limiting)
+      if (err.message.includes('Unexpected redirect') || err.message.includes('guccounter')) {
+        console.warn(`[WARN] ${ticker}: Yahoo Finance redirect detected (attempt ${retryCount + 1}/${maxRetries + 1}): ${err.message}`);
+        retryCount++;
+        if (retryCount <= maxRetries) {
+          continue;
+        }
+      }
+      
+      console.error(`[ERROR] ${ticker}: Error fetching market cap from Yahoo: ${err.message}`);
+      return null;
+    }
   }
+  
+  return null;
 }
 
 // Initialize cache on module load
