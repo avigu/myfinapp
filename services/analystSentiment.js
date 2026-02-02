@@ -96,11 +96,14 @@ async function getAnalystSentiment(ticker) {
   }
 }
 
-// Fallback function using a simplified approach with alternative data
+// Fallback function using a simplified approach with Yahoo Finance data
 async function getAnalystSentimentSimplified(ticker) {
   try {
-    // This is a simplified version that could scrape other sources
-    // or use free APIs that provide analyst recommendations
+    // This is a simplified version that could scrape Yahoo Finance or use other sources
+    // For now, we'll return a mock structure that can be enhanced later
+    
+    // You could implement web scraping here for Yahoo Finance analyst data
+    // or use other free APIs that provide analyst recommendations
     
     return {
       ratings: { buy: 0, hold: 0, sell: 0 },

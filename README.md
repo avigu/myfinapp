@@ -143,7 +143,7 @@ myfinapp/
 - **Mobile Frontend**: React Native with Expo
 - **Build**: Webpack, Babel
 - **Styling**: Modern CSS with CSS Variables, React Native StyleSheet
- - **Data Sources**: Financial Modeling Prep, Finnhub API
+- **Data Sources**: Yahoo Finance, Finnhub API
 - **AI Analysis**: OpenAI GPT-3.5-turbo
 - **Caching**: Google Cloud Storage
 
