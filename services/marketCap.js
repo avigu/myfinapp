@@ -1,78 +1,34 @@
 // services/marketCap.js
-const yahooFinance = require('../config/yahooFinanceConfig');
-const { readCache, writeCache } = require('../utils/cache');
+// This module is kept for backward compatibility but now delegates to stockDataProvider
+const stockDataProvider = require('./stockDataProvider');
+const { createLogger } = require('../utils/logger');
 
-const MARKETCAP_CACHE_MS = 24 * 60 * 60 * 1000; // 1 day
+const log = createLogger('MARKETCAP');
 
-// In-memory cache for market cap data
-let marketCapCache = {};
-
-// Load market cap cache on startup
-async function loadMarketCapCache() {
-  try {
-    const cache = await readCache('market-cap-cache', MARKETCAP_CACHE_MS);
-    if (cache) {
-      marketCapCache = cache;
-    }
-  } catch (err) {
-    console.error(`[ERROR] Could not load market cap cache: ${err.message}`);
-  }
-}
-
-// Save market cap cache
-async function saveMarketCapCache() {
-  try {
-    await writeCache('market-cap-cache', marketCapCache);
-  } catch (err) {
-    console.error(`[ERROR] Error saving market cap cache: ${err.message}`);
-  }
-}
-
+/**
+ * Get market cap for a ticker
+ * This is a legacy wrapper that delegates to stockDataProvider
+ * @param {string} ticker - Stock ticker symbol
+ * @returns {Promise<number|null>} - Market cap or null
+ */
 async function getMarketCap(ticker) {
-  const now = Date.now();
-  const entry = marketCapCache[ticker];
-  
-  if (entry && (now - entry.timestamp < MARKETCAP_CACHE_MS)) {
-    return entry.value;
-  }
-  
-  // Retry logic for rate limiting issues
-  let retryCount = 0;
-  const maxRetries = 2;
-  
-  while (retryCount <= maxRetries) {
-    try {
-      // Add delay for retries to avoid rate limiting
-      if (retryCount > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-      }
-      
-      const quote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] });
-      const cap = quote.price.marketCap || null;
-      
-      marketCapCache[ticker] = { value: cap, timestamp: now };
-      await saveMarketCapCache();
-      
-      return cap;
-    } catch (err) {
-      // Check for redirect errors (rate limiting)
-      if (err.message.includes('Unexpected redirect') || err.message.includes('guccounter')) {
-        console.warn(`[WARN] ${ticker}: Yahoo Finance redirect detected (attempt ${retryCount + 1}/${maxRetries + 1}): ${err.message}`);
-        retryCount++;
-        if (retryCount <= maxRetries) {
-          continue;
-        }
-      }
-      
-      console.error(`[ERROR] ${ticker}: Error fetching market cap from Yahoo: ${err.message}`);
-      return null;
-    }
-  }
-  
-  return null;
+  log.debug('getMarketCap called', { ticker });
+  return stockDataProvider.getMarketCap(ticker);
 }
 
-// Initialize cache on module load
-loadMarketCapCache();
+/**
+ * Get market caps for multiple tickers in batch
+ * @param {string[]} tickers - Array of ticker symbols
+ * @returns {Promise<Object>} - Map of ticker -> market cap
+ */
+async function getBatchMarketCaps(tickers) {
+  log.debug('getBatchMarketCaps called', { count: tickers.length });
+  const quotes = await stockDataProvider.getBatchQuotes(tickers);
+  const result = {};
+  for (const ticker of tickers) {
+    result[ticker] = quotes[ticker]?.marketCap || null;
+  }
+  return result;
+}
 
-module.exports = { getMarketCap }; 
+module.exports = { getMarketCap, getBatchMarketCaps };

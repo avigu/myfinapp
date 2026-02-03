@@ -1,5 +1,8 @@
 require('dotenv').config();
 const express = require('express');
+const { createLogger } = require('./utils/logger');
+
+const log = createLogger('SERVER');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -11,5 +14,5 @@ const mainRoutes = require('./routes');
 app.use('/', mainRoutes);
 
 app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+  log.info(`Server started`, { port, nodeEnv: process.env.NODE_ENV || 'development' });
 });

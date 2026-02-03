@@ -1,86 +1,123 @@
 const { getTickersCached } = require('./tickers');
-const { getMarketCap } = require('./marketCap');
-const { getHistoricalPrices } = require('./historical');
 const { getRecentEarningsCalendar } = require('./earnings');
 const { analyzeBuyOpportunities } = require('./buyOpportunity');
 const { INDICES } = require('../config/indices');
-const yahooFinance = require('../config/yahooFinanceConfig');
+const stockDataProvider = require('./stockDataProvider');
+const { createLogger } = require('../utils/logger');
 
-// Utility to add delay between API calls to avoid rate limiting
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+const log = createLogger('OPPORTUNITIES');
 
-// Main investment opportunities logic
+// Main investment opportunities logic - REFACTORED to use batch operations
 async function getInvestmentOpportunities(indexKey, now = new Date()) {
+  const flowStart = log.flowStart('getInvestmentOpportunities', { indexKey, date: now.toISOString().slice(0, 10) });
+
   const index = INDICES[indexKey];
-  let tTickers0 = Date.now();
-  let tickerCalls = 0;
-  let tTickers1, tEarnings0, tEarnings1, tHistTotal = 0, tPriceTotal = 0;
-  let earningsCalls = 0;
+  let tHistTotal = 0, tPriceTotal = 0;
   let historyCalls = 0;
-  let currentPriceCalls = 0;
+  let skippedStocks = { invalidDate: 0, lowMarketCap: 0, noPrice: 0, noHistory: 0, other: 0 };
 
   // Per-request in-memory cache for historical files
   const historicalCacheFiles = {};
 
   // Fetch earnings
-  tEarnings0 = Date.now();
+  const tEarnings0 = Date.now();
   const fromDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const toDate = now.toISOString().slice(0, 10);
-  const earningsCalendarData = await getRecentEarningsCalendar(fromDate, toDate); earningsCalls++;
-  tEarnings1 = Date.now();
+  log.info(`Fetching earnings calendar`, { from: fromDate, to: toDate });
+  const earningsCalendarData = await getRecentEarningsCalendar(fromDate, toDate);
+  const tEarnings1 = Date.now();
+  log.debug(`Earnings calendar fetched`, { count: earningsCalendarData.earningsCalendar?.length || 0, duration: `${tEarnings1 - tEarnings0}ms` });
 
   // Fetch tickers
-  tTickers1 = Date.now();
   const tTickersStart = Date.now();
-  let [tickers, nameMap] = await getTickersCached(indexKey); tickerCalls++;
+  log.info(`Fetching tickers for index`, { indexKey });
+  let [tickers, nameMap] = await getTickersCached(indexKey);
   const tTickersEnd = Date.now();
+  log.debug(`Tickers fetched`, { count: tickers.length, duration: `${tTickersEnd - tTickersStart}ms` });
+
   const tickerSet = new Set(tickers);
   const earningsArray = earningsCalendarData.earningsCalendar || [];
   const relevantEarnings = earningsArray.filter(e => e && e.symbol && tickerSet.has(e.symbol));
-  
-  const results = [];
+  log.info(`Found relevant earnings`, { total: earningsArray.length, relevant: relevantEarnings.length });
+
+  // Pre-validate earnings and collect valid tickers
+  const validEarnings = [];
   for (const earning of relevantEarnings) {
     const ticker = earning.symbol;
     if (!ticker || ticker === 'SP500' || !/^[A-Z.-]{1,6}$/.test(ticker)) continue;
     const earningsDate = new Date(earning.date);
     if (isNaN(earningsDate.getTime())) {
-      console.error(`[ERROR] Skipping ${ticker}: invalid earnings date "${earning.date}"`);
+      log.warn(`Skipping stock: invalid earnings date`, { ticker, date: earning.date });
+      skippedStocks.invalidDate++;
       continue;
     }
     const earningsUnix = Math.floor(earningsDate.getTime() / 1000);
     if (!Number.isFinite(earningsUnix)) {
-      console.error(`[ERROR] Skipping ${ticker}: invalid earningsUnix "${earningsUnix}"`);
+      log.warn(`Skipping stock: invalid earnings unix timestamp`, { ticker, earningsUnix });
+      skippedStocks.invalidDate++;
       continue;
     }
+    validEarnings.push({ ...earning, earningsUnix });
+  }
+
+  // BATCH OPERATION: Fetch all quotes at once instead of 115+ individual calls
+  const tickersToFetch = validEarnings.map(e => e.symbol);
+  log.info(`Fetching batch quotes`, { tickers: tickersToFetch.length });
+
+  const tPrice0 = Date.now();
+  const batchQuotes = await stockDataProvider.getBatchQuotes(tickersToFetch);
+  const tPrice1 = Date.now();
+  tPriceTotal = tPrice1 - tPrice0;
+  log.info(`Batch quotes received`, { requested: tickersToFetch.length, received: Object.keys(batchQuotes).length, duration: `${tPriceTotal}ms` });
+
+  // Process each earning with the batch quote data
+  const results = [];
+  for (const earning of validEarnings) {
+    const ticker = earning.symbol;
+    const earningsUnix = earning.earningsUnix;
+
     try {
-      const tHist0 = Date.now();
-      
-      // Single Yahoo Finance call to get both market cap and current price
-      const tPrice0 = Date.now();
-      const liveQuote = await yahooFinance.quoteSummary(ticker, { modules: ['price'] }); currentPriceCalls++;
-      const tPrice1 = Date.now();
-      tPriceTotal += (tPrice1 - tPrice0);
-      
-      const marketCap = liveQuote.price.marketCap;
-      const priceNow = liveQuote.price.regularMarketPrice;
-      
-      if (!marketCap || marketCap < index.minMarketCap) continue;
-      if (!priceNow) continue;
-      
+      // Get quote data from batch result (no API call needed)
+      const quote = batchQuotes[ticker];
+      if (!quote) {
+        log.debug(`No quote data for ticker`, { ticker });
+        skippedStocks.noPrice++;
+        continue;
+      }
+
+      const marketCap = quote.marketCap;
+      const priceNow = quote.price;
+
+      if (!marketCap || marketCap < index.minMarketCap) {
+        skippedStocks.lowMarketCap++;
+        continue;
+      }
+      if (!priceNow) {
+        skippedStocks.noPrice++;
+        continue;
+      }
+
       const daysBack = 7;
       const fromUnixForHistory = earningsUnix - daysBack * 86400;
       const toUnixForHistory = earningsUnix;
       if (!Number.isFinite(fromUnixForHistory) || !Number.isFinite(toUnixForHistory)) {
-        console.error(`[ERROR] Skipping ${ticker}: invalid from/to unix (${fromUnixForHistory}, ${toUnixForHistory})`);
+        log.warn(`Skipping stock: invalid history date range`, { ticker, fromUnix: fromUnixForHistory, toUnix: toUnixForHistory });
+        skippedStocks.invalidDate++;
         continue;
       }
-      // Pass the per-request cache
-      const history = await getHistoricalPrices(indexKey, ticker, fromUnixForHistory, toUnixForHistory, historicalCacheFiles); historyCalls++;
+
+      // Fetch historical data (uses caching, individual calls but much fewer)
+      const tHist0 = Date.now();
+      const history = await stockDataProvider.getHistoricalPrices(ticker, fromUnixForHistory, toUnixForHistory, historicalCacheFiles);
+      historyCalls++;
       const tHist1 = Date.now();
       tHistTotal += (tHist1 - tHist0);
-      if (!history || !history.c || history.c.length < 1) continue;
+
+      if (!history || !history.c || history.c.length < 1) {
+        skippedStocks.noHistory++;
+        continue;
+      }
+
       let priceBeforeEarnings = null;
       for (let i = history.t.length - 1; i >= 0; i--) {
         if (history.t[i] < earningsUnix) {
@@ -89,10 +126,11 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
         }
       }
       if (priceBeforeEarnings === null) {
-        console.error(`[ERROR] No trading day before earnings for ${ticker} (${earning.date})`);
+        log.warn(`No trading day before earnings`, { ticker, earningsDate: earning.date });
+        skippedStocks.noHistory++;
         continue;
       }
-      
+
       const change = ((priceNow - priceBeforeEarnings) / priceBeforeEarnings) * 100;
       results.push({
         ticker,
@@ -103,48 +141,61 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
         priceNow,
         change
       });
-      
-      // Add small delay to avoid rate limiting
-      await delay(100);
     } catch (err) {
-      console.error(`[ERROR] ${ticker}: Error processing in main logic: ${err.message}`);
+      log.error(`Error processing stock`, { ticker, error: err.message });
+      skippedStocks.other++;
     }
   }
-  
-  // Summary statistics
-  console.log(`[SUMMARY] Analysis completed: ${results.length} opportunities found`);
-  console.log(`[NETWORK] Earnings API: ${earningsCalls} calls, ${tEarnings1 - tEarnings0}ms`);
-  console.log(`[NETWORK] Tickers API: ${tickerCalls} calls, ${tTickersEnd - tTickersStart}ms`);
-  console.log(`[NETWORK] Historical API: ${historyCalls} calls, ${tHistTotal}ms`);
-  console.log(`[NETWORK] Current Price API: ${currentPriceCalls} calls, ${tPriceTotal}ms`);
-  
+
+  // Summary metrics
+  log.metrics('API Calls', {
+    earnings: { duration: `${tEarnings1 - tEarnings0}ms` },
+    tickers: { duration: `${tTickersEnd - tTickersStart}ms` },
+    batchQuotes: { tickers: tickersToFetch.length, duration: `${tPriceTotal}ms` },
+    historical: { calls: historyCalls, duration: `${tHistTotal}ms` },
+    apiStatus: stockDataProvider.getApiStatus()
+  });
+
+  log.flowEnd('getInvestmentOpportunities', flowStart, {
+    opportunitiesFound: results.length,
+    skipped: skippedStocks
+  });
+
   return results.sort((a, b) => b.change - a.change);
 }
 
 // Enhanced function that includes buy opportunity analysis
 async function getInvestmentOpportunitiesWithBuyAnalysis(indexKey, now = new Date()) {
-  const startTime = Date.now();
-  
+  const flowStart = log.flowStart('getInvestmentOpportunitiesWithBuyAnalysis', { indexKey });
+
   // Get basic opportunities first
   const opportunities = await getInvestmentOpportunities(indexKey, now);
-  const basicTime = Date.now() - startTime;
-  
+  const basicTime = Date.now() - flowStart;
+
+  const breakdown = {
+    gainers: opportunities.filter(stock => stock.change > 0).length,
+    losers: opportunities.filter(stock => stock.change < 0).length,
+    bigDrops: opportunities.filter(stock => stock.change < -7).length
+  };
+
   if (opportunities.length > 0) {
-    const gainers = opportunities.filter(stock => stock.change > 0);
-    const losers = opportunities.filter(stock => stock.change < 0);
-    const bigDrops = opportunities.filter(stock => stock.change < -7);
-    
-    console.log(`[SUMMARY] Breakdown: ${gainers.length} gainers, ${losers.length} losers, ${bigDrops.length} big drops (>7%)`);
+    log.info(`Opportunities breakdown`, breakdown);
   }
-  
+
   // Analyze buy opportunities for stocks that dropped more than 7%
+  log.info(`Starting buy opportunity analysis`, { stocksToAnalyze: breakdown.bigDrops });
   const buyAnalysisStartTime = Date.now();
   const buyOpportunities = await analyzeBuyOpportunities(opportunities);
   const buyAnalysisTime = Date.now() - buyAnalysisStartTime;
-  
-  const totalTime = Date.now() - startTime;
-  console.log(`[SUMMARY] Enhanced analysis: ${opportunities.length} total, ${buyOpportunities.length} buy opportunities in ${(totalTime / 1000).toFixed(1)}s`);
-  
+
+  const totalTime = Date.now() - flowStart;
+
+  log.flowEnd('getInvestmentOpportunitiesWithBuyAnalysis', flowStart, {
+    totalOpportunities: opportunities.length,
+    buyOpportunities: buyOpportunities.length,
+    timings: { basic: `${basicTime}ms`, buyAnalysis: `${buyAnalysisTime}ms`, total: `${totalTime}ms` }
+  });
+
   return {
     opportunities,
     buyOpportunities,
@@ -156,46 +207,66 @@ async function getInvestmentOpportunitiesWithBuyAnalysis(indexKey, now = new Dat
         buyAnalysis: buyAnalysisTime,
         total: totalTime
       },
-      breakdown: {
-        gainers: opportunities.filter(stock => stock.change > 0).length,
-        losers: opportunities.filter(stock => stock.change < 0).length,
-        bigDrops: opportunities.filter(stock => stock.change < -7).length
-      }
+      breakdown
     }
   };
 }
 
-// Upcoming relevant earnings logic
+// Upcoming relevant earnings logic - REFACTORED to use batch operations
 async function getUpcomingRelevantEarnings(indexKey) {
+  const flowStart = log.flowStart('getUpcomingRelevantEarnings', { indexKey });
+
   const index = INDICES[indexKey];
   const now = new Date();
   const fromDate = now.toISOString().slice(0, 10);
   const toDate = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  log.debug(`Fetching upcoming earnings`, { from: fromDate, to: toDate });
+
   const earningsCalendarData = await getRecentEarningsCalendar(fromDate, toDate);
   const [tickers, nameMap] = await getTickersCached(indexKey);
   const tickerSet = new Set(tickers);
   const earningsArray = earningsCalendarData.earningsCalendar || [];
   const relevant = [];
-  for (const earning of earningsArray) {
-    if (!earning || !earning.symbol || !tickerSet.has(earning.symbol)) continue;
-    try {
-      // Use direct Yahoo Finance call instead of getMarketCap to avoid double calls
-      const quote = await yahooFinance.quoteSummary(earning.symbol, { modules: ['price'] });
-      const marketCap = quote.price.marketCap;
-      if (!marketCap || marketCap < index.minMarketCap) continue;
-      relevant.push({
-        ticker: earning.symbol,
-        name: nameMap[earning.symbol] || '',
-        date: earning.date,
-        marketCap
-      });
-      
-      // Add small delay to avoid rate limiting
-      await delay(100);
-    } catch (err) {
-      console.error(`[ERROR] Error processing upcoming earnings for ${earning.symbol}: ${err.message}`);
+  let skipped = { notInIndex: 0, lowMarketCap: 0, noQuote: 0 };
+
+  // Filter to relevant earnings first
+  const relevantEarnings = earningsArray.filter(e => e && e.symbol && tickerSet.has(e.symbol));
+  const tickersToFetch = relevantEarnings.map(e => e.symbol);
+
+  // Count non-index stocks
+  skipped.notInIndex = earningsArray.length - relevantEarnings.length;
+
+  // BATCH OPERATION: Fetch all quotes at once
+  log.info(`Fetching batch quotes for upcoming earnings`, { tickers: tickersToFetch.length });
+  const batchQuotes = await stockDataProvider.getBatchQuotes(tickersToFetch);
+
+  for (const earning of relevantEarnings) {
+    const quote = batchQuotes[earning.symbol];
+    if (!quote) {
+      skipped.noQuote++;
+      continue;
     }
+
+    const marketCap = quote.marketCap;
+    if (!marketCap || marketCap < index.minMarketCap) {
+      skipped.lowMarketCap++;
+      continue;
+    }
+
+    relevant.push({
+      ticker: earning.symbol,
+      name: nameMap[earning.symbol] || '',
+      date: earning.date,
+      marketCap
+    });
   }
+
+  log.flowEnd('getUpcomingRelevantEarnings', flowStart, {
+    found: relevant.length,
+    skipped
+  });
+
   return relevant.sort((a, b) => new Date(a.date) - new Date(b.date));
 }
 

@@ -2,6 +2,13 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
+// Custom axios instance with proper User-Agent for Wikipedia
+const wikiAxios = axios.create({
+  headers: {
+    'User-Agent': 'MyFinApp/1.0 (https://github.com/myfinapp; contact@myfinapp.com) axios/1.9.0'
+  }
+});
+
 const INDICES = {
   sp500: {
     name: 'S&P 500',
@@ -10,7 +17,7 @@ const INDICES = {
     getTickers: async function () {
       console.log('Fetching S&P 500 tickers from Wikipedia...');
       const url = this.tickersUrl;
-      const response = await axios.get(url);
+      const response = await wikiAxios.get(url);
       const $ = cheerio.load(response.data);
       const tickers = [];
       const nameMap = {};
