@@ -3,6 +3,7 @@ const { getRecentEarningsCalendar } = require('./earnings');
 const { analyzeBuyOpportunities } = require('./buyOpportunity');
 const { INDICES } = require('../config/indices');
 const stockDataProvider = require('./stockDataProvider');
+const marketCap = require('./marketCap');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('OPPORTUNITIES');
@@ -60,8 +61,35 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
     validEarnings.push({ ...earning, earningsUnix });
   }
 
-  // BATCH OPERATION: Fetch all quotes at once instead of 115+ individual calls
-  const tickersToFetch = validEarnings.map(e => e.symbol);
+  // PRE-FILTER by market cap (cached weekly) before paying for quotes.
+  // This dramatically shrinks the working set and avoids 429s on the quote provider.
+  const allTickers = validEarnings.map(e => e.symbol);
+  const tMcap0 = Date.now();
+  const marketCapMap = await marketCap.getBatchMarketCaps(allTickers);
+  const tMcap1 = Date.now();
+  log.info(`Market caps resolved`, {
+    requested: allTickers.length,
+    known: Object.values(marketCapMap).filter(v => typeof v === 'number' && v > 0).length,
+    duration: `${tMcap1 - tMcap0}ms`
+  });
+
+  const earningsAboveCap = [];
+  for (const earning of validEarnings) {
+    const mc = marketCapMap[earning.symbol];
+    if (!mc || mc < index.minMarketCap) {
+      skippedStocks.lowMarketCap++;
+      continue;
+    }
+    earningsAboveCap.push({ ...earning, marketCap: mc });
+  }
+  log.info(`Earnings after market-cap filter`, {
+    before: validEarnings.length,
+    after: earningsAboveCap.length,
+    minMarketCap: index.minMarketCap
+  });
+
+  // BATCH OPERATION: Fetch quotes only for tickers that passed the market-cap filter.
+  const tickersToFetch = earningsAboveCap.map(e => e.symbol);
   log.info(`Fetching batch quotes`, { tickers: tickersToFetch.length });
 
   const tPrice0 = Date.now();
@@ -72,12 +100,11 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
 
   // Process each earning with the batch quote data
   const results = [];
-  for (const earning of validEarnings) {
+  for (const earning of earningsAboveCap) {
     const ticker = earning.symbol;
     const earningsUnix = earning.earningsUnix;
 
     try {
-      // Get quote data from batch result (no API call needed)
       const quote = batchQuotes[ticker];
       if (!quote) {
         log.debug(`No quote data for ticker`, { ticker });
@@ -85,13 +112,9 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
         continue;
       }
 
-      const marketCap = quote.marketCap;
+      const stockMarketCap = earning.marketCap;
       const priceNow = quote.price;
 
-      if (!marketCap || marketCap < index.minMarketCap) {
-        skippedStocks.lowMarketCap++;
-        continue;
-      }
       if (!priceNow) {
         skippedStocks.noPrice++;
         continue;
@@ -136,7 +159,7 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
         ticker,
         name: nameMap[ticker] || '',
         earningsDate: earning.date,
-        marketCap,
+        marketCap: stockMarketCap,
         priceBeforeEarnings,
         priceNow,
         change
@@ -151,6 +174,7 @@ async function getInvestmentOpportunities(indexKey, now = new Date()) {
   log.metrics('API Calls', {
     earnings: { duration: `${tEarnings1 - tEarnings0}ms` },
     tickers: { duration: `${tTickersEnd - tTickersStart}ms` },
+    marketCaps: { tickers: allTickers.length, kept: earningsAboveCap.length, duration: `${tMcap1 - tMcap0}ms` },
     batchQuotes: { tickers: tickersToFetch.length, duration: `${tPriceTotal}ms` },
     historical: { calls: historyCalls, duration: `${tHistTotal}ms` },
     apiStatus: stockDataProvider.getApiStatus()
@@ -237,19 +261,17 @@ async function getUpcomingRelevantEarnings(indexKey) {
   // Count non-index stocks
   skipped.notInIndex = earningsArray.length - relevantEarnings.length;
 
-  // BATCH OPERATION: Fetch all quotes at once
-  log.info(`Fetching batch quotes for upcoming earnings`, { tickers: tickersToFetch.length });
-  const batchQuotes = await stockDataProvider.getBatchQuotes(tickersToFetch);
+  // Upcoming earnings only need market caps for filtering — skip the (expensive) quote round-trip.
+  log.info(`Fetching market caps for upcoming earnings`, { tickers: tickersToFetch.length });
+  const marketCapMap = await marketCap.getBatchMarketCaps(tickersToFetch);
 
   for (const earning of relevantEarnings) {
-    const quote = batchQuotes[earning.symbol];
-    if (!quote) {
+    const stockMarketCap = marketCapMap[earning.symbol];
+    if (!stockMarketCap) {
       skipped.noQuote++;
       continue;
     }
-
-    const marketCap = quote.marketCap;
-    if (!marketCap || marketCap < index.minMarketCap) {
+    if (stockMarketCap < index.minMarketCap) {
       skipped.lowMarketCap++;
       continue;
     }
@@ -258,7 +280,7 @@ async function getUpcomingRelevantEarnings(indexKey) {
       ticker: earning.symbol,
       name: nameMap[earning.symbol] || '',
       date: earning.date,
-      marketCap
+      marketCap: stockMarketCap
     });
   }
 
