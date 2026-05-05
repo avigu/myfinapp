@@ -11,7 +11,7 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
   const isBuyOpportunity = !!opportunity;
   const stockData = isBuyOpportunity ? opportunity.originalStock : stock;
   
-  const { ticker, change, priceBeforeEarnings, priceNow, marketCap, earningsDate } = stockData;
+  const { ticker, name, change, priceBeforeEarnings, priceNow, marketCap, earningsDate } = stockData;
 
   // Function to fetch real analysis data for regular stocks
   const fetchAnalysisData = async () => {
@@ -225,6 +225,7 @@ const UnifiedStockCard = ({ stock, opportunity, rank, type }) => {
         <div className="rank-badge">#{rank}</div>
         <div className="ticker-info">
           <h3 className="ticker">{ticker}</h3>
+          {name && <div className="company-name-label">{name}</div>}
           {earningsDate && (
             <span className="earnings-date">📅 {earningsDate}</span>
           )}

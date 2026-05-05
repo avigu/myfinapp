@@ -372,6 +372,16 @@ body {
   margin: 0 0 0.2rem 0;
 }
 
+.unified-stock-card .company-name-label {
+  font-size: 0.72rem;
+  color: #6c757d;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 0.15rem;
+}
+
 .unified-stock-card .earnings-date {
   font-size: 0.75rem;
   color: var(--dark-color);
@@ -830,6 +840,152 @@ body {
 
 .footer a:hover {
   text-decoration: underline;
+}
+
+/* Earnings Calendar */
+.earnings-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.earnings-day {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.date-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 2px solid var(--primary-color);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--dark-color);
+}
+
+.date-header .company-count {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #6c757d;
+}
+
+.earnings-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.earnings-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1.5rem;
+  border-bottom: 1px solid #f0f0f0;
+  transition: var(--transition);
+}
+
+.earnings-item:last-child {
+  border-bottom: none;
+}
+
+.earnings-item:hover {
+  background: #f8f9fa;
+}
+
+.company-info {
+  flex: 0 0 180px;
+  min-width: 0;
+}
+
+.company-ticker {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.company-name {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: #6c757d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.earnings-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+.earnings-time,
+.eps-estimate,
+.revenue-estimate {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.earnings-time {
+  background: #e8f4fd;
+  color: #0c63a8;
+}
+
+.eps-estimate {
+  background: #eafaf1;
+  color: #1a7a45;
+}
+
+.revenue-estimate {
+  background: #fef9e7;
+  color: #856404;
+}
+
+.view-stock-button {
+  flex-shrink: 0;
+  padding: 0.4rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary-color);
+  color: white;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.view-stock-button:hover {
+  background: #0056b3;
+  transform: translateY(-1px);
+}
+
+.earnings-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.empty-state {
+  text-align: center;
+  color: #6c757d;
+}
+
+.empty-state h3 {
+  font-size: 1.3rem;
+  margin-bottom: 0.5rem;
 }
 
 /* Responsive Design */

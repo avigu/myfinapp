@@ -57,8 +57,8 @@ const EarningsCalendar = ({ earnings }) => {
                     <h4 className="company-ticker">
                       {company.symbol || company.ticker}
                     </h4>
-                    {company.companyName && (
-                      <p className="company-name">{company.companyName}</p>
+                    {(company.name || company.companyName) && (
+                      <p className="company-name">{company.name || company.companyName}</p>
                     )}
                   </div>
                   
