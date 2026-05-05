@@ -9,8 +9,10 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('ROUTES');
 
 // Serve React app
-router.get('/app', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/app.html'));
+router.get('/app', (req, res, next) => {
+  res.sendFile('app.html', { root: path.join(__dirname, '../public') }, (err) => {
+    if (err) next(err);
+  });
 });
 
 router.get(['/', '/nasdaq'], async (req, res) => {
