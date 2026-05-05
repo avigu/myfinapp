@@ -2,7 +2,7 @@
 // Unified stock data provider.
 // Quotes:     Finnhub /quote (parallel chunks)
 // MarketCap:  delegated to services/marketCap (weekly TTL cache, Finnhub profile)
-// Historical: Alpha Vantage TIME_SERIES_DAILY (cached 24h)
+// Historical: Tiingo daily (primary) -> Alpha Vantage TIME_SERIES_DAILY (fallback), cached 24h
 const axios = require('axios');
 const { readCache, writeCache } = require('../utils/cache');
 const marketCapService = require('./marketCap');
@@ -12,6 +12,7 @@ const log = createLogger('STOCK_DATA');
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
+const TIINGO_API_KEY = process.env.TIINGO_API_KEY;
 
 const QUOTE_CACHE_MS = 4 * 60 * 60 * 1000;
 const HISTORICAL_CACHE_MS = 24 * 60 * 60 * 1000;
@@ -140,7 +141,13 @@ async function getHistoricalPrices(ticker, fromUnix, toUnix, cacheFiles = {}) {
 
   log.cacheMiss(`historical-${ticker}`);
 
-  const result = await getAlphaVantageDaily(ticker, fromUnix, toUnix);
+  let result = await getTiingoDaily(ticker, fromUnix, toUnix);
+  if (result.s !== 'ok') {
+    if (TIINGO_API_KEY) {
+      log.debug('Tiingo miss; falling back to AlphaVantage', { ticker, status: result.s });
+    }
+    result = await getAlphaVantageDaily(ticker, fromUnix, toUnix);
+  }
 
   if (result.s === 'ok') {
     if (!cacheFiles[cacheKey]) cacheFiles[cacheKey] = {};
@@ -152,6 +159,53 @@ async function getHistoricalPrices(ticker, fromUnix, toUnix, cacheFiles = {}) {
   }
 
   return result;
+}
+
+function unixToIsoDate(unixSec) {
+  return new Date(unixSec * 1000).toISOString().slice(0, 10);
+}
+
+async function getTiingoDaily(ticker, fromUnix, toUnix) {
+  if (!TIINGO_API_KEY) {
+    return { s: 'no_key', c: [], t: [] };
+  }
+
+  const apiStart = log.apiCall('Tiingo', `daily(${ticker})`);
+
+  try {
+    const startDate = unixToIsoDate(fromUnix);
+    const endDate = unixToIsoDate(toUnix);
+    const url = `https://api.tiingo.com/tiingo/daily/${encodeURIComponent(ticker)}/prices?startDate=${startDate}&endDate=${endDate}&format=json&token=${TIINGO_API_KEY}`;
+    const response = await axios.get(url, { timeout: 15000 });
+
+    log.apiResult('Tiingo', `daily(${ticker})`, apiStart, true);
+
+    if (!Array.isArray(response.data) || response.data.length === 0) {
+      return { s: 'no_data', c: [], t: [] };
+    }
+
+    const sorted = response.data
+      .map(row => ({
+        t: Math.floor(new Date(row.date).getTime() / 1000),
+        c: typeof row.adjClose === 'number' ? row.adjClose : row.close
+      }))
+      .filter(d => Number.isFinite(d.t) && Number.isFinite(d.c))
+      .sort((a, b) => a.t - b.t);
+
+    if (sorted.length === 0) {
+      return { s: 'no_data', c: [], t: [] };
+    }
+
+    return {
+      s: 'ok',
+      c: sorted.map(d => d.c),
+      t: sorted.map(d => d.t)
+    };
+  } catch (error) {
+    log.apiResult('Tiingo', `daily(${ticker})`, apiStart, false);
+    log.warn('Tiingo request failed', { ticker, error: error.message });
+    return { s: 'error', c: [], t: [] };
+  }
 }
 
 async function getAlphaVantageDaily(ticker, fromUnix, toUnix) {
