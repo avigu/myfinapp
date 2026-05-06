@@ -292,8 +292,85 @@ async function getUpcomingRelevantEarnings(indexKey) {
   return relevant.sort((a, b) => new Date(a.date) - new Date(b.date));
 }
 
+async function getEarningsPlayOpportunities(indexKey) {
+  const flowStart = log.flowStart('getEarningsPlayOpportunities', { indexKey });
+
+  // Step 1: Upcoming earnings this week
+  const upcomingEarnings = await getUpcomingRelevantEarnings(indexKey);
+  log.info('Upcoming earnings fetched', { count: upcomingEarnings.length });
+
+  if (upcomingEarnings.length === 0) {
+    log.flowEnd('getEarningsPlayOpportunities', flowStart, { found: 0 });
+    return [];
+  }
+
+  // Step 2: Batch-fetch current prices
+  const tickers = upcomingEarnings.map(e => e.ticker);
+  const batchQuotes = await stockDataProvider.getBatchQuotes(tickers);
+  log.info('Batch quotes fetched', { count: Object.keys(batchQuotes).length });
+
+  // Step 3: For each stock, compare current price to price ~90 days ago (prior earnings period).
+  // Finnhub free tier has no historical earnings calendar, so we approximate the previous
+  // earnings price using the close from 90 days ago (within a ±5 day window).
+  const now = new Date();
+  const baselineUnix = Math.floor(now.getTime() / 1000) - 90 * 86400;
+  const historicalCacheFiles = {};
+  const results = [];
+
+  for (const stock of upcomingEarnings) {
+    const { ticker, name, date: upcomingEarningsDate, marketCap } = stock;
+
+    try {
+      const quote = batchQuotes[ticker];
+      if (!quote || !quote.price) continue;
+
+      const currentPrice = quote.price;
+      const fromUnix = baselineUnix - 5 * 86400;
+      const toUnix = baselineUnix + 5 * 86400;
+
+      const history = await stockDataProvider.getHistoricalPrices(ticker, fromUnix, toUnix, historicalCacheFiles);
+      if (!history || !history.c || history.c.length < 1) continue;
+
+      // Closest trading day to the 90-day mark
+      let bestIdx = 0;
+      let bestDiff = Infinity;
+      for (let i = 0; i < history.t.length; i++) {
+        const diff = Math.abs(history.t[i] - baselineUnix);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+      const prevPrice = history.c[bestIdx];
+      const prevDate = new Date(history.t[bestIdx] * 1000).toISOString().slice(0, 10);
+
+      const priceChange = ((currentPrice - prevPrice) / prevPrice) * 100;
+
+      if (priceChange <= -10) {
+        results.push({
+          ticker,
+          name,
+          upcomingEarningsDate,
+          prevEarningsDate: prevDate,
+          prevEarningsPrice: prevPrice,
+          currentPrice,
+          priceChange,
+          marketCap
+        });
+      }
+    } catch (err) {
+      log.error('Error processing earnings play', { ticker, error: err.message });
+    }
+  }
+
+  log.flowEnd('getEarningsPlayOpportunities', flowStart, {
+    candidates: upcomingEarnings.length,
+    found: results.length
+  });
+
+  return results.sort((a, b) => a.priceChange - b.priceChange);
+}
+
 module.exports = {
   getInvestmentOpportunities,
   getInvestmentOpportunitiesWithBuyAnalysis,
   getUpcomingRelevantEarnings,
+  getEarningsPlayOpportunities,
 }; 

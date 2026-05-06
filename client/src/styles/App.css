@@ -1851,4 +1851,173 @@ body {
   .unified-stock-card .ai-reason p {
     font-size: 0.9rem;
   }
-} 
+}
+
+/* Earnings Plays Section */
+.earnings-plays-section {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.earnings-play-card {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  padding: 1.5rem;
+  transition: var(--transition);
+  border-left: 4px solid var(--danger-color);
+  background: linear-gradient(135deg, rgba(220, 53, 69, 0.04) 0%, white 50%);
+  position: relative;
+  overflow: hidden;
+}
+
+.earnings-play-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
+}
+
+.earnings-play-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.earnings-play-card .rank-badge {
+  background: var(--danger-color);
+  color: white;
+  padding: 0.3rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.earnings-play-card .ticker-info {
+  flex: 1;
+  margin: 0 0.75rem;
+  min-width: 0;
+}
+
+.earnings-play-card .ticker {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin: 0 0 0.15rem 0;
+}
+
+.earnings-play-card .company-name-label {
+  font-size: 0.75rem;
+  color: #6c757d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.play-badge {
+  background: rgba(220, 53, 69, 0.1);
+  color: var(--danger-color);
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  padding: 0.4rem 0.75rem;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.play-change-label {
+  font-size: 0.78rem;
+  color: #6c757d;
+  margin-bottom: 1rem;
+  padding-left: 0.1rem;
+}
+
+.earnings-play-card .price-info {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: rgba(220, 53, 69, 0.04);
+  border-radius: 8px;
+}
+
+.earnings-play-card .price-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.earnings-play-card .price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.earnings-play-card .price-row .label {
+  color: var(--dark-color);
+  opacity: 0.7;
+}
+
+.earnings-play-card .price-row .value {
+  font-weight: 600;
+  color: var(--dark-color);
+}
+
+.earnings-play-card .price-row .value.current {
+  color: var(--danger-color);
+}
+
+.play-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.earnings-play-card .card-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.earnings-play-card .action-button {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--primary-color);
+  background: white;
+  color: var(--primary-color);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: var(--transition);
+  text-align: center;
+}
+
+.earnings-play-card .action-button:hover {
+  background: var(--primary-color);
+  color: white;
+  transform: translateY(-2px);
+}
+
+@media (max-width: 768px) {
+  .earnings-play-card .price-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .earnings-play-card .card-header {
+    flex-direction: column;
+  }
+
+  .earnings-play-card .ticker-info {
+    margin: 0;
+  }
+}

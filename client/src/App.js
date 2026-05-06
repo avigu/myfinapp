@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import UnifiedStockCard from './components/UnifiedStockCard';
 import BuyOpportunityCard from './components/BuyOpportunityCard';
+import EarningsPlayCard from './components/EarningsPlayCard';
 import IndexSelector from './components/IndexSelector';
 import DateSelector from './components/DateSelector';
 import EarningsCalendar from './components/EarningsCalendar';
@@ -15,6 +16,8 @@ const App = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
   const [activeTab, setActiveTab] = useState('gainers');
   const [buyOpportunitiesLoading, setBuyOpportunitiesLoading] = useState(false);
+  const [earningsPlays, setEarningsPlays] = useState(null);
+  const [earningsPlaysLoading, setEarningsPlaysLoading] = useState(false);
 
   const fetchData = async (includeBuyAnalysis = false) => {
     setLoading(true);
@@ -47,15 +50,40 @@ const App = () => {
     }
   };
 
+  const fetchEarningsPlaysInternal = async (indexKey) => {
+    setEarningsPlaysLoading(true);
+    try {
+      const response = await fetch(`/earnings-plays?index=${indexKey}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!response.ok) throw new Error('Failed to fetch earnings plays');
+      const result = await response.json();
+      setEarningsPlays(result.earningsPlays || []);
+    } catch (err) {
+      setEarningsPlays([]);
+    } finally {
+      setEarningsPlaysLoading(false);
+    }
+  };
+
   useEffect(() => {
     // Only fetch buy analysis if the buy opportunities tab is active
     const includeBuyAnalysis = activeTab === 'buyOpportunities';
     fetchData(includeBuyAnalysis);
+
+    if (activeTab === 'earningsPlays') {
+      fetchEarningsPlaysInternal(selectedIndex);
+    } else {
+      setEarningsPlays(null);
+    }
   }, [selectedIndex, selectedDate, activeTab]);
 
   const handleRefresh = () => {
     const includeBuyAnalysis = activeTab === 'buyOpportunities';
     fetchData(includeBuyAnalysis);
+    if (activeTab === 'earningsPlays') {
+      fetchEarningsPlaysInternal(selectedIndex);
+    }
   };
 
   const handleTabChange = (newTab) => {
@@ -132,13 +160,19 @@ const App = () => {
           >
             💎 Buy Opportunities ({buyOpportunities.length})
           </button>
-          <button 
+          <button
             className={`tab ${activeTab === 'earnings' ? 'active' : ''}`}
             onClick={() => handleTabChange('earnings')}
           >
             📅 Upcoming Earnings ({upcomingEarnings.length})
           </button>
-          <button 
+          <button
+            className={`tab ${activeTab === 'earningsPlays' ? 'active' : ''}`}
+            onClick={() => handleTabChange('earningsPlays')}
+          >
+            🎯 Earnings Plays ({earningsPlays ? earningsPlays.length : 0})
+          </button>
+          <button
             className={`tab ${activeTab === 'all' ? 'active' : ''}`}
             onClick={() => handleTabChange('all')}
           >
@@ -212,6 +246,41 @@ const App = () => {
 
           {activeTab === 'earnings' && (
             <EarningsCalendar earnings={upcomingEarnings} />
+          )}
+
+          {activeTab === 'earningsPlays' && (
+            <div className="earnings-plays-section">
+              {earningsPlaysLoading ? (
+                <div className="loading-section">
+                  <LoadingSpinner />
+                  <p>Scanning for earnings plays... This may take a moment.</p>
+                </div>
+              ) : earningsPlays && earningsPlays.length > 0 ? (
+                <>
+                  <div className="section-header">
+                    <h2>🎯 Earnings Plays</h2>
+                    <p>Stocks with upcoming earnings that are down ≥10% since their previous earnings event</p>
+                  </div>
+                  <div className="buy-opportunities-grid">
+                    {earningsPlays.map((play, index) => (
+                      <EarningsPlayCard
+                        key={play.ticker}
+                        play={play}
+                        rank={index + 1}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="no-opportunities">
+                  <h3>🔍 No Plays Found</h3>
+                  <p>No stocks with upcoming earnings are down 10% or more since their previous earnings event.</p>
+                  <button onClick={() => fetchEarningsPlaysInternal(selectedIndex)} className="analyze-button">
+                    🔄 Re-scan
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {activeTab === 'all' && (

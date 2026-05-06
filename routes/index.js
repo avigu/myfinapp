@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
-const { getInvestmentOpportunities, getInvestmentOpportunitiesWithBuyAnalysis, getUpcomingRelevantEarnings } = require('../services/opportunities');
+const { getInvestmentOpportunities, getInvestmentOpportunitiesWithBuyAnalysis, getUpcomingRelevantEarnings, getEarningsPlayOpportunities } = require('../services/opportunities');
 const { renderTabbedHtml } = require('../utils/render');
 const { analyzeStock, validateStockData } = require('../services/aiAnalysis');
 const { createLogger } = require('../utils/logger');
@@ -118,6 +118,28 @@ router.get('/buy-opportunities', async (req, res) => {
   } catch (error) {
     log.error(`Error generating buy opportunities`, { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Error generating buy opportunities data.', details: error.message });
+    log.requestEnd(req.method, req.path, startTime, 500);
+  }
+});
+
+// Earnings plays endpoint
+router.get('/earnings-plays', async (req, res) => {
+  const startTime = log.requestStart(req.method, req.path, req.query);
+
+  try {
+    const indexKey = req.query.index || 'sp500';
+
+    log.info('Fetching earnings plays', { indexKey });
+
+    const earningsPlays = await getEarningsPlayOpportunities(indexKey);
+
+    log.info('Earnings plays response ready', { count: earningsPlays.length });
+
+    res.json({ indexKey, earningsPlays });
+    log.requestEnd(req.method, req.path, startTime, 200);
+  } catch (error) {
+    log.error('Error generating earnings plays', { error: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Error generating earnings plays data.', details: error.message });
     log.requestEnd(req.method, req.path, startTime, 500);
   }
 });
