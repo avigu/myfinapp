@@ -2,10 +2,11 @@
 // Unified stock data provider.
 // Quotes:     Finnhub /quote (parallel chunks)
 // MarketCap:  delegated to services/marketCap (weekly TTL cache, Finnhub profile)
-// Historical: Tiingo daily (primary) -> Alpha Vantage TIME_SERIES_DAILY (fallback), cached 24h
+// Historical: Tiingo daily (primary) -> Alpaca 10y free (fallback) -> Alpha Vantage (last resort), cached 24h
 const axios = require('axios');
 const { readCache, writeCache } = require('../utils/cache');
 const marketCapService = require('./marketCap');
+const { getHistoricalBars } = require('./alpaca');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('STOCK_DATA');
@@ -125,7 +126,7 @@ async function getHistoricalPrices(ticker, fromUnix, toUnix, cacheFiles = {}) {
   }
 
   const cacheKey = `hist-${ticker}`;
-  const rangeKey = `${fromUnix}-${toUnix}`;
+  const rangeKey = `${unixToIsoDate(fromUnix)}-${unixToIsoDate(toUnix)}`;
 
   if (cacheFiles[cacheKey] && cacheFiles[cacheKey][rangeKey]) {
     return cacheFiles[cacheKey][rangeKey];
@@ -143,9 +144,11 @@ async function getHistoricalPrices(ticker, fromUnix, toUnix, cacheFiles = {}) {
 
   let result = await getTiingoDaily(ticker, fromUnix, toUnix);
   if (result.s !== 'ok') {
-    if (TIINGO_API_KEY) {
-      log.debug('Tiingo miss; falling back to AlphaVantage', { ticker, status: result.s });
-    }
+    log.debug('Tiingo miss; falling back to Alpaca', { ticker, status: result.s });
+    result = await getHistoricalBars(ticker, fromUnix, toUnix);
+  }
+  if (result.s !== 'ok') {
+    log.debug('Alpaca miss; falling back to AlphaVantage', { ticker, status: result.s });
     result = await getAlphaVantageDaily(ticker, fromUnix, toUnix);
   }
 

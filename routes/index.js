@@ -4,6 +4,8 @@ const path = require('path');
 const { getInvestmentOpportunities, getInvestmentOpportunitiesWithBuyAnalysis, getUpcomingRelevantEarnings, getEarningsPlayOpportunities } = require('../services/opportunities');
 const { renderTabbedHtml } = require('../utils/render');
 const { analyzeStock, validateStockData } = require('../services/aiAnalysis');
+const { getBouncBackCandidates } = require('../services/bounceBack');
+const { getAccount, getPositions, getOrders, getPortfolio } = require('../services/alpaca');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('ROUTES');
@@ -210,6 +212,72 @@ router.post('/api/ai-analysis', express.json(), async (req, res) => {
     res.status(statusCode).json(errorResponse);
     aiLog.requestEnd(req.method, req.path, startTime, statusCode);
   }
+});
+
+// Bounce-Back strategy endpoint
+router.get('/bounce-back', async (req, res) => {
+  const startTime = log.requestStart(req.method, req.path, req.query);
+
+  try {
+    const indexKey = req.query.index || 'sp500';
+    if (!['sp500', 'nasdaq'].includes(indexKey)) {
+      return res.status(400).json({ error: 'Invalid index. Use sp500 or nasdaq.' });
+    }
+
+    const minMarketCapB     = parseFloat(req.query.minMarketCap) || 5;
+    const minMarketCap      = minMarketCapB * 1_000_000_000;
+    const includeFailedChecks = req.query.includeFailedChecks === 'true';
+    const maxCandidates     = parseInt(req.query.maxCandidates, 10) || 20;
+
+    log.info('Fetching bounce-back candidates', { indexKey, minMarketCapB, includeFailedChecks, maxCandidates });
+
+    const result = await getBouncBackCandidates(indexKey, { minMarketCap, includeFailedChecks, maxCandidates });
+
+    log.info('Bounce-back response ready', { candidates: result.candidatesCount });
+    res.json(result);
+    log.requestEnd(req.method, req.path, startTime, 200);
+
+  } catch (error) {
+    log.error('Error generating bounce-back candidates', { error: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Error generating bounce-back candidates.', details: error.message });
+    log.requestEnd(req.method, req.path, startTime, 500);
+  }
+});
+
+// Combined portfolio endpoint
+router.get('/api/portfolio', async (req, res) => {
+  const startTime = log.requestStart(req.method, req.path);
+  const result = await getPortfolio();
+  const status = result.error ? 503 : 200;
+  res.status(status).json(result);
+  log.requestEnd(req.method, req.path, startTime, status);
+});
+
+// Alpaca portfolio routes
+router.get('/api/alpaca/account', async (req, res) => {
+  const startTime = log.requestStart(req.method, req.path);
+  const result = await getAccount();
+  const status = result.error ? 503 : 200;
+  res.status(status).json(result);
+  log.requestEnd(req.method, req.path, startTime, status);
+});
+
+router.get('/api/alpaca/positions', async (req, res) => {
+  const startTime = log.requestStart(req.method, req.path);
+  const result = await getPositions();
+  const status = result.error ? 503 : 200;
+  res.status(status).json(result);
+  log.requestEnd(req.method, req.path, startTime, status);
+});
+
+router.get('/api/alpaca/orders', async (req, res) => {
+  const startTime = log.requestStart(req.method, req.path);
+  const orderStatus = req.query.status || 'all';
+  const limit = Math.min(parseInt(req.query.limit, 10) || 50, 500);
+  const result = await getOrders(orderStatus, limit);
+  const status = result.error ? 503 : 200;
+  res.status(status).json(result);
+  log.requestEnd(req.method, req.path, startTime, status);
 });
 
 module.exports = router; 
